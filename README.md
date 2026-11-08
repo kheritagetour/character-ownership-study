@@ -79,6 +79,12 @@ ownership-study/
 
 ## 3. 앱 사용법
 
+### 온라인 테스트 링크
+**https://kheritagetour.github.io/character-ownership-study/** — 설치 없이 Chrome에서 바로 열림 (실제 AI 이미지 생성 포함).
+- 팀원 테스트 시: `테스트/파일럿 세션`에 체크 → 모델은 Pollinations(실제 이미지) 또는 Mock(빠른 흐름 점검) 선택 → 세션 시작.
+- 응답 데이터는 **각자 브라우저에만** 저장됨. 테스트 후 연구자 화면에서 `CSV 내보내기`로 받아 공유.
+- `main` 브랜치에 push하면 1–2분 뒤 자동 반영.
+
 ### 실행
 `index.html`을 Chrome에서 더블클릭하여 열기. 서버 불필요. 데이터는 **그 브라우저의 IndexedDB**에 저장되므로 **모든 세션을 같은 노트북·같은 브라우저 프로필**에서 진행할 것.
 

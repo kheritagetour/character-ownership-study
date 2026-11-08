@@ -330,16 +330,26 @@ def main():
 
     # ---------------- 6b. time/length confound check
     w("## 6b. 시간·길이 통제 점검 (교란 변인)\n")
-    w("설계상 두 조건 모두 2단계 × 고정 시간, 같은 글자 수 범위. 아래가 조건 간 비슷해야 '결과 확인 여부' 효과로 해석 가능.\n")
+    w("1차 프롬프트 작성은 두 조건이 동일(고정 시간, 같은 글자 수 범위). 1차 지표가 조건 간 비슷해야 이후 차이를 '결과를 보고 수정할 기회'의 효과로 해석 가능.\n")
     w("| 변수 | A M (SD) | B M (SD) | Welch p | g |\n|---|---|---|---|---|")
-    for v in ["round1_chars", "round2_chars", "final_prompt_chars", "round1_input_events", "round2_input_events",
-              "round2_edit_distance", "round1_seconds", "round2_seconds", "overtime_seconds"]:
+    for v in ["round1_chars", "round1_input_events", "round1_seconds", "final_prompt_chars", "overtime_seconds"]:
         c = compare(rows, v, alternative="two-sided")
         if "error" not in c and not np.isnan(c["t"]):
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | {fmt_p(c['p_two'])} | {c['g']:.2f} |")
         elif "error" not in c:
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | — | — |")
-    w("\n> round2_edit_distance는 2단계에서 프롬프트를 얼마나 고쳤는지(문자 편집거리). B에서 크게 나오는 것은 조작의 일부로 해석.\n")
+    bro = [r for r in rows if r["condition"] == "B"]
+    rev = [r for r in bro if r.get("b_revised") == "1"]
+    w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 1차 결과를 보고 프롬프트를 수정해 재생성.")
+    if rev:
+        for v in ["round2_chars", "round2_edit_distance", "round2_input_events", "round2_seconds", "b_decide_seconds"]:
+            y = col(rev, v); y = y[~np.isnan(y)]
+            if len(y):
+                w(f"- {v}: M = {y.mean():.1f}" + (f", SD = {y.std(ddof=1):.1f}" if len(y) > 1 else "") + f" (n={len(y)})")
+        po_rev, po_keep = col(rev, "PO_mean"), col([r for r in bro if r.get("b_revised") == "0"], "PO_mean")
+        if len(po_keep):
+            w(f"- B 내 PO: 수정함 M = {np.nanmean(po_rev):.2f} (n={len(po_rev)}) vs 그대로 확정 M = {np.nanmean(po_keep):.2f} (n={len(po_keep)}) — 자기선택이라 인과 해석 불가, 기술만")
+    w("")
     L = col(rows, "final_prompt_chars")
     res = ols(po, np.column_stack([one, b, (L - np.nanmean(L)) / 100]), ["Intercept", "Condition (B=1)", "Final prompt length (per 100 chars)"])
     if res:
@@ -353,7 +363,7 @@ def main():
     # ---------------- 7. process
     w("## 7. 과정 기록 (기술통계)\n")
     w("| 변수 | A M (SD) | B M (SD) |\n|---|---|---|")
-    for v in ["n_generations", "n_failed_generations", "gen_seconds", "sketch_seconds", "concept_chars", "total_minutes"]:
+    for v in ["n_generations", "n_failed_generations", "used_sketch", "gen_seconds", "sketch_seconds", "concept_chars", "total_minutes"]:
         y = col(rows, v)
         cell = []
         for g in ["A", "B"]:

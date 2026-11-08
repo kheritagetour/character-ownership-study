@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Character Creation Study</title>
+<style>
+  :root {
+    --navy: #1c2a4a; --ink: #1f2430; --muted: #6b7385; --line: #d9dde6;
+    --bg: #f7f7f5; --card: #ffffff; --accent: #2f5bd3; --warn: #b4441f; --ok: #2e7d4f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif; }
+  header { background: var(--navy); color: #fff; padding: 10px 24px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+  header .step { opacity: .75; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 26px; color: var(--navy); margin: 0 0 6px; }
+  h2 { font-size: 20px; color: var(--navy); margin: 24px 0 8px; }
+  p.lead { color: var(--muted); margin-top: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 16px 0; }
+  label.field { display: block; font-weight: 600; margin: 14px 0 6px; }
+  label.field small { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+  textarea { min-height: 90px; resize: vertical; }
+  button { font: inherit; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--navy); background: var(--navy); color: #fff; cursor: pointer; }
+  button.secondary { background: #fff; color: var(--navy); }
+  button.danger { background: #fff; color: var(--warn); border-color: var(--warn); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
+  .err { color: var(--warn); font-size: 14px; margin-top: 8px; min-height: 1em; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .en { color: #9aa1b0; font-size: 12.5px; display: block; }
+  /* Likert */
+  .likert { border-top: 1px solid var(--line); }
+  .likert .row { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  .likert .opts { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
+  .likert .opts label { cursor: pointer; font-size: 13px; color: var(--muted); }
+  .likert .opts input { display: block; margin: 0 auto 2px; width: 20px; height: 20px; cursor: pointer; }
+  .likert .anchors { display: grid; grid-template-columns: 1fr 360px; gap: 16px; font-size: 12px; color: var(--muted); padding-bottom: 4px; }
+  .likert .anchors div:last-child { display: flex; justify-content: space-between; }
+  .likert .row.missing { background: #fff4f0; }
+  @media (max-width: 720px) { .likert .row, .likert .anchors { grid-template-columns: 1fr; } }
+  /* Slider */
+  .slider-wrap { display: flex; align-items: center; gap: 12px; }
+  .slider-wrap input[type=range] { flex: 1; }
+  .slider-wrap output { min-width: 44px; font-weight: 700; text-align: right; }
+  .slider-wrap.untouched input { opacity: .45; }
+  /* Layouts */
+  .split { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+  .concept-panel { font-size: 14px; position: sticky; top: 12px; }
+  .concept-panel dt { font-weight: 700; color: var(--navy); margin-top: 8px; }
+  .concept-panel dd { margin: 0; white-space: pre-wrap; }
+  .concept-panel img { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .three { grid-template-columns: 1fr; } }
+  .three img { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .final-img { max-width: 340px; display: block; margin: 0 auto; border-radius: 8px; border: 1px solid var(--line); }
+  /* Sketch */
+  .sketch-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .sketch-tools button { padding: 6px 12px; font-size: 14px; }
+  .sketch-tools button.on { outline: 3px solid var(--accent); }
+  canvas#sketch { width: 100%; max-width: 600px; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 8px; background: #fff; touch-action: none; cursor: crosshair; display: block; }
+  /* Generation */
+  .gen-status { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px; }
+  .timer { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .timer.low { color: var(--warn); }
+  .attempts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+  .attempt { border: 2px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; font-size: 12.5px; }
+  .attempt img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 4px; display: block; background: #eee; }
+  .attempt.selectable { cursor: pointer; }
+  .attempt.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47,91,211,.2); }
+  .attempt .cap { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); }
+  .spinner { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--navy); border-radius: 50%; animation: spin 1s linear infinite; margin: 30px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #eef1f7; color: var(--navy); font-size: 13px; font-weight: 600; }
+  /* Admin */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  .radio-list label { display: block; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; cursor: pointer; background: #fff; }
+  .radio-list input { margin-right: 8px; }
+  .world { background: #fbfaf6; border-left: 4px solid var(--navy); padding: 14px 18px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header><span id="hdr-title">Character Creation Study</span><span class="step" id="hdr-step"></span></header>
+<main id="app"></main>
+
+<script>
+/* =====================================================================
+ * CONFIG — 파일럿 후 조정할 값은 모두 여기에 있음
+ * ===================================================================== */
+const CONFIG = {
+  STUDY_ID: 'GCT573-T2-ownership',
+  N_TARGET: 12,                    // 블록 무선배정 표 크기 (A/B 각 절반)
+  MAX_ATTEMPTS_B: 3,               // 조건 B: 첫 생성 + 추가 2회
+  GEN_TIME_LIMIT_SEC: 360,         // AI 생성 단계 제한시간 (A/B 동일)
+  SKETCH_SUGGESTED_SEC: 180,       // 스케치 권장 시간 (안내용, 강제 X)
+  B_FINAL_SELECTION: 'last',       // 'last' = 마지막 결과 고정 / 'any' = B는 생성한 것 중 하나 선택
+  IMAGE: { width: 768, height: 1024 },  // 동일 출력 포맷/비율 (3:4)
+  // 모든 프롬프트 뒤에 붙는 고정 스타일 (참가자에게 보이지 않음) — "Same AI model and visual style"
+  STYLE_SUFFIX: ', single full-body character, front view, character concept art, clean digital illustration, soft lighting, plain light background',
+  POLLINATIONS_MODEL: 'flux',
+  OPENAI_MODEL: 'gpt-image-1',
+  GEN_TIMEOUT_MS: 120000,
+};
+
+const WORLD = {
+  title: '등불의 군도 (The Lantern Archipelago)',
+  text:
+`하늘 위에 떠 있는 수십 개의 작은 섬들이 밧줄다리와 소형 비행선으로 이어진 세계입니다.
+이곳은 밤이 하루의 절반 이상을 차지하기 때문에, 사람들은 빛을 담아두는 '등불'에 의지해 살아갑니다.
+섬마다 등불을 지키는 등불지기, 섬 사이를 오가며 물건을 파는 바람상인, 구름 속에서 빛나는 물고기를 잡는 구름어부 등 다양한 사람들이 살고 있습니다.
+
+최근, 가장자리 섬부터 등불이 하나씩 이유 없이 꺼지는 사건이 일어나고 있습니다.`,
+  task: '이 세계를 배경으로 하는 인터랙티브 스토리 또는 게임에 등장할 오리지널 캐릭터를 만들어 주세요.',
+  taskEn: 'Create an original character for an interactive story or game.',
+};
+
+/* =====================================================================
+ * 측정 도구 (PDF Appendix A1–A5)
+ * ===================================================================== */
+const SCALES = {
+  PO: { name: '심리적 소유감', items: [
+    ['PO1', '법적 소유권과 관계없이, 나는 이 캐릭터가 내 것이라고 느낀다.', 'Regardless of its legal ownership status, I feel that this character is mine.'],
+    ['PO2', '나는 이 캐릭터를 소유하고 있는 것처럼 느낀다.', 'I feel as though I own this character.'],
+    ['PO3', '이 캐릭터가 내 것이라는 느낌이 강하게 든다.', 'I have a strong sense that this character is mine.'],
+    ['PO4', '이것은 나의 캐릭터처럼 느껴진다.', 'This feels like my character.'],
+    ['PO5', '나는 이 캐릭터에 대해 높은 수준의 개인적 소유감을 느낀다.', 'I feel a high degree of personal ownership over this character.'],
+  ]},
+  IA: { name: '의도 일치도', items: [
+    ['IA1', '최종 캐릭터는 내가 원래 의도한 것을 반영한다.', 'The final character reflects what I originally intended.'],
+    ['IA2', '최종 캐릭터는 AI 사용 전에 내가 만든 컨셉 시트 및 스케치와 일치한다.', 'The final character matches the concept sheet and sketch I made before using AI.'],
+    ['IA3', '내가 계획한 이 캐릭터의 핵심 특징이 최종 이미지에 나타나 있다.', 'The key features I planned for this character appear in the final image.'],
+  ]},
+  AU: { name: '지각된 저자성', items: [
+    ['AU1', '나는 내가 이 캐릭터의 창작자라고 느낀다.', 'I feel that I am the creator of this character.'],
+    ['AU2', '나는 내가 이 캐릭터를 만드는 데 주된 기여자라고 생각한다.', 'I consider myself the main contributor to creating this character.'],
+  ]},
+  CC: { name: '지각된 창작 통제감', items: [
+    ['CC1', '나는 캐릭터의 전반적인 창작 방향을 결정할 수 있었다.', 'I was able to determine the overall creative direction of the character.'],
+    ['CC2', '나는 캐릭터 제작 과정을 어떻게 진행할지 결정하는 데 상당한 자율성을 가졌다.', 'I had considerable autonomy in deciding how the character creation process was carried out.'],
+    ['CC3', '나는 캐릭터 제작 과제에 어떻게 접근할지 스스로 결정할 수 있었다.', 'I could independently decide how to approach the character creation task.'],
+  ]},
+};
+const CREDIT_OPTIONS = [
+  ['self', '나 자신', 'Myself'],
+  ['joint', '나와 AI 공동', 'Myself and AI jointly'],
+  ['ai_main', '주로 AI, 나는 보조', 'Mainly AI, with my assistance'],
+  ['other', '기타', 'Other'],
+];
+const LIKERT_ANCHORS = ['전혀 그렇지 않다', '매우 그렇다'];
+
+/* =====================================================================
+ * Storage (IndexedDB — 이미지 포함 세션이 localStorage 용량을 넘기 때문)
+ * ===================================================================== */
+const DB = {
+  _db: null,
+  open() {
+    if (this._db) return Promise.resolve(this._db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('ownership-study', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('sessions', { keyPath: 'id' });
+      r.onsuccess = () => { this._db = r.result; res(r.result); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async tx(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('sessions', mode);
+      const out = fn(t.objectStore('sessions'));
+      t.oncomplete = () => res(out && 'result' in out ? out.result : undefined);
+      t.onerror = () => rej(t.error);
+    });
+  },
+  put(s) { return this.tx('readwrite', st => st.put(JSON.parse(JSON.stringify(s)))); },
+  getAll() { return this.tx('readonly', st => st.getAll()); },
+  del(id) { return this.tx('readwrite', st => st.delete(id)); },
+};
+
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+/* =====================================================================
+ * Randomization — 블록 무선배정 (A/B 각 N/2), 시드 기반으로 재현 가능
+ * ===================================================================== */
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function makeAssignment(n, seed) {
+  const rnd = mulberry32(seed);
+  // 4명 단위 블록(AABB 순열)으로 섞어 중도 종료 시에도 균형 유지
+  const out = [];
+  while (out.length < n) {
+    const block = ['A', 'A', 'B', 'B'];
+    for (let i = block.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [block[i], block[j]] = [block[j], block[i]]; }
+    out.push(...block);
+  }
+  return out.slice(0, n).map((c, i) => ({ pid: 'P' + String(i + 1).padStart(2, '0'), condition: c }));
+}
+function getAssignment() {
+  let a = LS.get('assignment', null);
+  if (!a) { a = { seed: Math.floor(Math.random() * 1e9), table: null }; a.table = makeAssignment(CONFIG.N_TARGET, a.seed); LS.set('assignment', a); }
+  return a;
+}
+
+/* =====================================================================
+ * Image generation providers
+ * ===================================================================== */
+function blobToDataUrl(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); }); }
+function withTimeout(p, ms) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]); }
+
+const PROVIDERS = {
+  pollinations: {
+    label: 'Pollinations (FLUX, 무료·키 불필요 — 테스트/파일럿용, 45초당 1장 제한)',
+    model: () => 'pollinations/' + CONFIG.POLLINATIONS_MODEL,
+    cooldownSec: 46,   // 무료 티어: IP당 45초에 1장
+    async generate(fullPrompt, seed) {
+      const { width, height } = CONFIG.IMAGE;
+      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${width}&height=${height}&seed=${seed}&model=${CONFIG.POLLINATIONS_MODEL}&nologo=true&private=true&enhance=false`;
+      const r = await withTimeout(fetch(url), CONFIG.GEN_TIMEOUT_MS);
+      if (!r.ok) {
+        const msg = await r.text().catch(() => '');
+        const m = msg.match(/Retry after (\d+)s/);
+        const err = new Error('HTTP ' + r.status + (m ? ` (retry after ${m[1]}s)` : ''));
+        if (m) err.retryAfterSec = +m[1];
+        throw err;
+      }
+      return blobToDataUrl(await r.blob());
+    },
+  },
+  openai: {
+    label: 'OpenAI gpt-image-1 (API 키 필요, 한국어 프롬프트 이해 우수)',
+    model: () => 'openai/' + CONFIG.OPENAI_MODEL,
+    async generate(fullPrompt) {
+      const key = LS.get('openaiKey', '');
+      if (!key) throw new Error('OpenAI API 키가 설정되지 않음');
+      const r = await withTimeout(fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body: JSON.stringify({ model: CONFIG.OPENAI_MODEL, prompt: fullPrompt, size: '1024x1536', n: 1 }),
+      }), CONFIG.GEN_TIMEOUT_MS);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
+      return 'data:image/png;base64,' + j.data[0].b64_json;
+    },
+  },
+  mock: {
+    label: 'Mock (오프라인 리허설용 — 가짜 이미지)',
+    model: () => 'mock',
+    async generate(fullPrompt, seed) {
+      await new Promise(r => setTimeout(r, 1200));
+      const hue = seed % 360;
+      const words = fullPrompt.split(',')[0].slice(0, 120).replace(/[<&>]/g, '');
+      const lines = words.match(/.{1,22}/g) || [''];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CONFIG.IMAGE.width}" height="${CONFIG.IMAGE.height}">
+        <rect width="100%" height="100%" fill="hsl(${hue},45%,88%)"/>
+        <circle cx="384" cy="330" r="120" fill="hsl(${hue},40%,60%)"/>
+        <rect x="264" y="470" width="240" height="380" rx="60" fill="hsl(${hue},40%,55%)"/>
+        <text x="384" y="930" font-size="30" text-anchor="middle" fill="#333">MOCK · seed ${seed}</text>
+        ${lines.map((l, i) => `<text x="384" y="${80 + i * 38}" font-size="30" text-anchor="middle" fill="#222">${l}</text>`).join('')}
+      </svg>`;
+      return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+    },
+  },
+};
+
+/* =====================================================================
+ * Session state
+ * ===================================================================== */
+let S = null;          // 현재 세션
+let timerHandle = null;
+const now = () => new Date().toISOString();
+function log(type, data) { if (S) S.events.push({ t: now(), ms: Date.now(), type, ...(data ? { data } : {}) }); }
+async function save() { if (S) await DB.put(S); }
+
+const FLOW = ['consent', 'pre', 'world', 'concept', 'sketch', 'genIntro', 'gen', 'postPO', 'postIA', 'postAU', 'postCov', 'done'];
+const STEP_LABEL = { consent: '동의', pre: '사전 설문', world: '세계관', concept: '컨셉 시트', sketch: '스케치', genIntro: 'AI 생성 안내', gen: 'AI 생성', postPO: '사후 설문 1/4', postIA: '사후 설문 2/4', postAU: '사후 설문 3/4', postCov: '사후 설문 4/4', done: '완료' };
+
+async function go(screen) {
+  if (S) {
+    if (S.screen) log('screen_exit', { screen: S.screen });
+    S.screen = screen;
+    S.screenTimes[screen] = S.screenTimes[screen] || now();
+    log('screen_enter', { screen });
+    await save();
+  }
+  clearInterval(timerHandle);
+  window.scrollTo(0, 0);
+  const idx = FLOW.indexOf(screen);
+  document.getElementById('hdr-step').textContent = idx >= 0 ? `${idx + 1} / ${FLOW.length} · ${STEP_LABEL[screen]}` : '';
+  SCREENS[screen]();
+}
+
+/* =====================================================================
+ * UI helpers
+ * ===================================================================== */
+const app = document.getElementById('app');
+function h(html) { app.innerHTML = html; }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function $(sel) { return app.querySelector(sel); }
+function $$(sel) { return [...app.querySelectorAll(sel)]; }
+
+function likertHtml(scaleKey) {
+  const sc = SCALES[scaleKey];
+  return `<div class="likert">
+    <div class="anchors"><div></div><div><span>1 ${LIKERT_ANCHORS[0]}</span><span>${LIKERT_ANCHORS[1]} 7</span></div></div>
+    ${sc.items.map(([id, ko, en]) => `
+      <div class="row" data-item="${id}">
+        <div>${esc(ko)}<span class="en">${esc(en)}</span></div>
+        <div class="opts">${[1, 2, 3, 4, 5, 6, 7].map(v => `<label><input type="radio" name="${id}" value="${v}" ${S.post[id] == v ? 'checked' : ''}>${v}</label>`).join('')}</div>
+      </div>`).join('')}
+  </div>`;
+}
+function readLikert(scaleKey) {
+  let ok = true;
+  for (const [id] of SCALES[scaleKey].items) {
+    const el = app.querySelector(`input[name="${id}"]:checked`);
+    const row = app.querySelector(`.row[data-item="${id}"]`);
+    if (!el) { ok = false; row.classList.add('missing'); } else { S.post[id] = +el.value; row.classList.remove('missing'); }
+  }
+  return ok;
+}
+function likertGenericHtml(name, label, value, anchors = ['전혀 없음', '매우 많음']) {
+  return `<div class="likert"><div class="anchors"><div></div><div><span>1 ${anchors[0]}</span><span>${anchors[1]} 7</span></div></div>
+    <div class="row" data-item="${name}"><div>${label}</div>
+    <div class="opts">${[1, 2, 3, 4, 5, 6, 7].map(v => `<label><input type="radio" name="${name}" value="${v}" ${value == v ? 'checked' : ''}>${v}</label>`).join('')}</div></div></div>`;
+}
+function sliderHtml(name, value) {
+  const touched = value !== undefined && value !== null;
+  return `<div class="slider-wrap ${touched ? '' : 'untouched'}" data-slider="${name}">
+    <span class="muted">0</span><input type="range" min="0" max="100" step="1" value="${touched ? value : 50}" name="${name}">
+    <span class="muted">100</span><output>${touched ? value : '—'}</output></div>`;
+}
+function bindSliders() {
+  $$('.slider-wrap').forEach(w => {
+    const inp = w.querySelector('input'), out = w.querySelector('output');
+    const upd = () => { w.classList.remove('untouched'); w.dataset.touched = '1'; out.textContent = inp.value; };
+    inp.addEventListener('input', upd); inp.addEventListener('change', upd);
+    if (!w.classList.contains('untouched')) w.dataset.touched = '1';
+  });
+}
+function conceptPanelHtml({ withSketch = true } = {}) {
+  const c = S.concept;
+  return `<dl>
+    <dt>이름</dt><dd>${esc(c.name)}</dd>
+    <dt>성격</dt><dd>${esc(c.personality)}</dd>
+    <dt>외형</dt><dd>${esc(c.looks)}</dd>
+    <dt>핵심 특징</dt><dd>${esc(c.keyFeature)}</dd>
+    <dt>배경 이야기</dt><dd>${esc(c.backstory)}</dd>
+  </dl>${withSketch && S.sketch?.dataUrl ? `<dt style="font-weight:700;color:var(--navy);margin-top:8px">스케치</dt><img src="${S.sketch.dataUrl}" alt="스케치">` : ''}`;
+}
+function finalImage() { const a = S.gen.attempts.find(a => a.idx === S.gen.finalIdx); return a ? a.image : ''; }
+
+/* =====================================================================
+ * Screens
+ * ===================================================================== */
+const SCREENS = {};
+
+/* ---------- Admin ---------- */
+SCREENS.admin = async function () {
+  document.getElementById('hdr-step').textContent = '연구자 화면';
+  const asg = getAssignment();
+  const sessions = (await DB.getAll()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const done = new Set(sessions.filter(s => s.completedAt && !s.isTest).map(s => s.pid));
+  const nextRow = asg.table.find(r => !done.has(r.pid));
+  const provider = LS.get('provider', 'pollinations');
+  h(`
+  <h1>연구자 설정</h1>
+  <p class="lead">참가자에게 화면을 넘기기 전에 이 화면에서 세션을 시작하세요. 진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">새 세션</h2>
+    <div class="grid2">
+      <div><label class="field">참가자 ID</label>
+        <select id="pid">${asg.table.map(r => `<option value="${r.pid}" ${nextRow && r.pid === nextRow.pid ? 'selected' : ''}>${r.pid} ${done.has(r.pid) ? '(완료)' : ''}</option>`).join('')}<option value="__custom">직접 입력…</option></select>
+        <input type="text" id="pidCustom" placeholder="예: PILOT1" style="display:none;margin-top:6px">
+      </div>
+      <div><label class="field">조건 <small>(배정표 기준 자동, 필요 시 수동 변경)</small></label>
+        <select id="cond"><option value="A">A · Single-Prompt</option><option value="B">B · Iterative Prompting</option></select>
+      </div>
+      <div><label class="field">이미지 생성 모델</label>
+        <select id="provider">${Object.entries(PROVIDERS).map(([k, p]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${p.label}</option>`).join('')}</select>
+      </div>
+      <div id="keyBox" style="display:${provider === 'openai' ? 'block' : 'none'}"><label class="field">OpenAI API Key <small>(이 브라우저에만 저장)</small></label>
+        <input type="password" id="okey" value="${esc(LS.get('openaiKey', ''))}" placeholder="sk-...">
+      </div>
+    </div>
+    <label style="display:block;margin-top:12px"><input type="checkbox" id="isTest"> 테스트/파일럿 세션 (분석 내보내기에서 표시됨)</label>
+    <div class="actions">
+      <button class="secondary" id="testGen">생성 연결 테스트</button>
+      <button id="start">세션 시작 → 참가자에게 화면 전달</button>
+    </div>
+    <div id="testOut" class="muted"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">세션 목록 (${sessions.length})</h2>
+    <table><thead><tr><th>ID</th><th>조건</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
+    ${sessions.map(s => { const f = flatten(s); return `<tr>
+      <td>${esc(s.pid)}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${s.condition}</td>
+      <td>${s.startedAt.slice(5, 16).replace('T', ' ')}</td>
+      <td>${s.completedAt ? '완료' : '진행 중 (' + esc(STEP_LABEL[s.screen] || s.screen) + ')'}</td>
+      <td>${f.n_generations}</td><td>${f.PO_mean ?? '—'}</td>
+      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">아직 없음</td></tr>'}
+    </tbody></table>
+    <div class="actions">
+      <button class="secondary" id="expCsv">CSV 내보내기 (분석용)</button>
+      <button class="secondary" id="expJson">전체 JSON 내보내기 (이미지 포함)</button>
+      <label class="secondary" style="display:inline-flex;align-items:center;border:1px solid var(--navy);border-radius:8px;padding:10px 18px;cursor:pointer;color:var(--navy)">JSON 가져오기<input type="file" id="impJson" accept=".json" style="display:none"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">무선배정표 <span class="muted">(seed ${asg.seed})</span></h2>
+    <p class="muted">4명 단위 블록 무선배정. 남은 인원 기준 다음 배정: <b>${nextRow ? nextRow.pid + ' → ' + nextRow.condition : '모두 완료'}</b></p>
+    <table><tbody><tr>${asg.table.map(r => `<td style="text-align:center;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b></td>`).join('')}</tr></tbody></table>
+    <div class="actions"><button class="danger" id="reseed">배정표 다시 만들기</button></div>
+  </div>`);
+
+  const pidSel = $('#pid'), condSel = $('#cond');
+  const syncCond = () => {
+    const row = asg.table.find(r => r.pid === pidSel.value);
+    $('#pidCustom').style.display = pidSel.value === '__custom' ? 'block' : 'none';
+    if (row) condSel.value = row.condition;
+  };
+  pidSel.onchange = syncCond; syncCond();
+  $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
+  $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
+  $('#testGen').onclick = async () => {
+    LS.set('openaiKey', $('#okey')?.value.trim() || '');
+    const out = $('#testOut'); out.textContent = '생성 중…';
+    const p = PROVIDERS[$('#provider').value]; const t0 = Date.now();
+    try {
+      const img = await p.generate('a friendly lantern keeper girl with a glowing staff' + CONFIG.STYLE_SUFFIX, 42);
+      out.innerHTML = `성공 (${((Date.now() - t0) / 1000).toFixed(1)}초)<br><img src="${img}" style="max-width:200px;margin-top:8px;border-radius:6px">`;
+    } catch (e) { out.innerHTML = `<span style="color:var(--warn)">실패: ${esc(e.message)}</span>`; }
+  };
+  $('#start').onclick = async () => {
+    const pid = pidSel.value === '__custom' ? $('#pidCustom').value.trim() : pidSel.value;
+    if (!pid) return alert('참가자 ID를 입력하세요.');
+    if (done.has(pid) && !confirm(pid + '는 이미 완료된 ID입니다. 계속할까요?')) return;
+    const row = asg.table.find(r => r.pid === pid);
+    if (row && row.condition !== condSel.value && !confirm(`배정표(${row.condition})와 다른 조건(${condSel.value})으로 시작합니다. 계속할까요?`)) return;
+    LS.set('openaiKey', $('#okey')?.value.trim() || LS.get('openaiKey', ''));
+    const prov = $('#provider').value;
+    S = {
+      id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, condition: condSel.value,
+      isTest: $('#isTest').checked, provider: prov, model: PROVIDERS[prov].model(),
+      config: CONFIG, userAgent: navigator.userAgent,
+      startedAt: now(), completedAt: null, screen: null, screenTimes: {},
+      pre: {}, concept: {}, sketch: {}, gen: { attempts: [], finalIdx: null, phaseStart: null, phaseEnd: null, timedOut: false }, post: {}, events: [],
+    };
+    log('session_start', { condition: S.condition, provider: prov });
+    go('consent');
+  };
+  $('#expCsv').onclick = () => exportCsv(sessions);
+  $('#expJson').onclick = () => download(`sessions_${stamp()}.json`, JSON.stringify(sessions, null, 1), 'application/json');
+  $('#impJson').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const arr = JSON.parse(await f.text()); for (const s of [].concat(arr)) await DB.put(s);
+    SCREENS.admin();
+  };
+  $('#reseed').onclick = () => { if (confirm('배정표를 새로 만듭니다. 데이터 수집 시작 후에는 하지 마세요.')) { localStorage.removeItem('assignment'); SCREENS.admin(); } };
+  $$('[data-resume]').forEach(b => b.onclick = () => { S = sessions.find(s => s.id === b.dataset.resume); log('session_resume'); go(S.screen || 'consent'); });
+  $$('[data-dl]').forEach(b => b.onclick = () => { const s = sessions.find(s => s.id === b.dataset.dl); download(`${s.id}.json`, JSON.stringify(s, null, 1), 'application/json'); });
+  $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm('이 세션을 삭제할까요? 되돌릴 수 없습니다.')) { await DB.del(b.dataset.del); SCREENS.admin(); } });
+};
+
+/* ---------- 1. Consent ---------- */
+SCREENS.consent = function () {
+  h(`<h1>연구 참여 안내</h1>
+  <div class="card">
+    <p>본 연구는 <b>AI를 활용한 캐릭터 창작 과정에서 사람들이 어떤 경험을 하는지</b> 알아보기 위한 수업 연구입니다 (GCT573 인지와 정서, Team 2).</p>
+    <ul>
+      <li>소요 시간: 약 20분</li>
+      <li>진행: 사전 설문 → 캐릭터 컨셉 작성 및 스케치 → AI 이미지 생성 → 사후 설문</li>
+      <li>입력하신 프롬프트, 생성된 이미지, 응답, 단계별 소요 시간이 기록됩니다.</li>
+      <li>수집된 자료는 익명(참가자 번호)으로 처리되며 수업 연구 목적으로만 사용됩니다.</li>
+      <li>참여는 자발적이며 언제든 중단할 수 있고, 중단에 따른 불이익은 없습니다.</li>
+      <li>정답은 없습니다. 그림 실력은 평가 대상이 아닙니다.</li>
+    </ul>
+    <label style="display:block;margin-top:14px"><input type="checkbox" id="agree"> 위 내용을 이해했으며 연구 참여에 동의합니다.</label>
+    <div class="err" id="err"></div>
+  </div>
+  <div class="actions"><button id="next">다음</button></div>`);
+  $('#next').onclick = () => {
+    if (!$('#agree').checked) return $('#err').textContent = '동의에 체크해 주세요.';
+    S.consentAt = now(); go('pre');
+  };
+};
+
+/* ---------- 2. Pre-survey ---------- */
+SCREENS.pre = function () {
+  const p = S.pre;
+  const freq = (name, label) => `<label class="field">${label}</label>
+    <select name="${name}"><option value="">선택</option>${['전혀 사용하지 않음', '1년에 몇 번', '한 달에 몇 번', '일주일에 몇 번', '거의 매일'].map((t, i) => `<option value="${i + 1}" ${p[name] == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  h(`<h1>사전 설문</h1><p class="lead">본인의 경험에 대해 답해 주세요.</p>
+  <div class="card">
+    <h2 style="margin-top:0">AI 사용 경험</h2>
+    ${freq('ai_text_freq', '텍스트 생성형 AI (ChatGPT, Claude 등) 사용 빈도')}
+    ${freq('ai_image_freq', '이미지 생성형 AI (Midjourney, DALL·E, Firefly 등) 사용 빈도')}
+    <label class="field">사용해 본 이미지 생성 도구 <small>(모두 선택)</small></label>
+    <div>${['Midjourney', 'DALL·E / ChatGPT 이미지', 'Stable Diffusion', 'Adobe Firefly', 'Gemini / Imagen', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    ${likertGenericHtml('ai_image_skill', '이미지 생성 AI로 원하는 결과를 얻는 데 자신이 있다.', p.ai_image_skill, LIKERT_ANCHORS)}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">창작 경험</h2>
+    <label class="field">그림·디자인·일러스트 등 시각 창작 경험</label>
+    <select name="art_exp"><option value="">선택</option>${['없음', '취미로 가끔', '취미로 꾸준히', '전공/교육 이수', '전문적으로 활동'].map((t, i) => `<option value="${i + 1}" ${p.art_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label class="field">캐릭터/스토리 창작 경험 (글, 게임, TRPG, 웹툰 등)</label>
+    <select name="char_exp"><option value="">선택</option>${['없음', '해 본 적 있음', '여러 번 해 봄', '전공/업무로 함'].map((t, i) => `<option value="${i + 1}" ${p.char_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    ${likertGenericHtml('draw_skill', '나는 그림을 잘 그리는 편이다.', p.draw_skill, LIKERT_ANCHORS)}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">기본 정보</h2>
+    <div class="grid2">
+      <div><label class="field">나이</label><input type="number" name="age" min="18" max="99" value="${esc(p.age)}"></div>
+      <div><label class="field">성별 <small>(선택)</small></label><select name="gender"><option value="">응답 안 함</option>${['여성', '남성', '기타'].map(t => `<option ${p.gender === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    </div>
+  </div>
+  <div class="err" id="err"></div>
+  <div class="actions"><button id="next">다음</button></div>`);
+  $('#next').onclick = () => {
+    const f = n => app.querySelector(`[name="${n}"]`).value;
+    const radio = n => app.querySelector(`input[name="${n}"]:checked`)?.value;
+    Object.assign(S.pre, {
+      ai_text_freq: +f('ai_text_freq') || null, ai_image_freq: +f('ai_image_freq') || null,
+      ai_tools: $$('input[name="ai_tools"]:checked').map(x => x.value),
+      ai_image_skill: +radio('ai_image_skill') || null, art_exp: +f('art_exp') || null,
+      char_exp: +f('char_exp') || null, draw_skill: +radio('draw_skill') || null,
+      age: +f('age') || null, gender: f('gender'),
+    });
+    const miss = ['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age'].filter(k => !S.pre[k]);
+    if (miss.length) return $('#err').textContent = '모든 필수 항목에 응답해 주세요.';
+    go('world');
+  };
+};
+
+/* ---------- 3. World ---------- */
+SCREENS.world = function () {
+  h(`<h1>세계관 소개</h1><p class="lead">아래 세계관을 천천히 읽어 주세요. 이후 단계에서도 계속 참고할 수 있습니다.</p>
+  <div class="card"><h2 style="margin-top:0">${esc(WORLD.title)}</h2><div class="world">${esc(WORLD.text)}</div></div>
+  <div class="card"><b>과제</b><p style="margin:6px 0 0">${esc(WORLD.task)}</p><span class="en">${esc(WORLD.taskEn)}</span>
+  <p class="muted" style="margin-top:12px">먼저 캐릭터 컨셉을 글로 정리하고 손 스케치를 한 다음, AI 이미지 생성 도구로 캐릭터를 완성하게 됩니다.</p></div>
+  <div class="actions"><button id="next">캐릭터 구상 시작</button></div>`);
+  $('#next').onclick = () => go('concept');
+};
+
+/* ---------- 4. Concept sheet ---------- */
+SCREENS.concept = function () {
+  const c = S.concept;
+  const fields = [
+    ['name', '캐릭터 이름', '', false],
+    ['personality', '성격', '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', true],
+    ['looks', '외형', '예: 나이, 체형, 머리 모양과 색, 옷차림, 소지품 등', true],
+    ['keyFeature', '핵심 특징', '이 캐릭터를 한눈에 알아볼 수 있게 하는 시각적 특징 1–2가지', true],
+    ['backstory', '배경 이야기', '이 세계에서 어떤 역할을 하고, 어떤 사연이 있는지', true],
+  ];
+  h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">AI를 사용하기 전에, 만들고 싶은 캐릭터를 직접 구상해 적어 주세요. 이 내용은 이후 결과와 비교하는 데 사용됩니다.</p>
+  <div class="split">
+    <div class="card concept-panel"><b>${esc(WORLD.title)}</b><div class="world" style="font-size:13.5px;margin-top:8px">${esc(WORLD.text)}</div></div>
+    <div class="card">${fields.map(([k, l, ph, area]) => `<label class="field">${l}</label>${area
+      ? `<textarea name="${k}" placeholder="${esc(ph)}">${esc(c[k])}</textarea>`
+      : `<input type="text" name="${k}" value="${esc(c[k])}">`}`).join('')}
+      <div class="err" id="err"></div>
+      <div class="actions"><button id="next">다음: 스케치</button></div>
+    </div>
+  </div>`);
+  $('#next').onclick = () => {
+    for (const [k] of fields) S.concept[k] = app.querySelector(`[name="${k}"]`).value.trim();
+    const short = fields.filter(([k, , , area]) => S.concept[k].length < (area ? 5 : 1));
+    if (short.length) return $('#err').textContent = '모든 칸을 작성해 주세요 (짧게라도 괜찮습니다).';
+    log('concept_submit', { chars: Object.fromEntries(fields.map(([k]) => [k, S.concept[k].length])) });
+    go('sketch');
+  };
+};
+
+/* ---------- 5. Hand sketch ---------- */
+SCREENS.sketch = function () {
+  h(`<h1>손 스케치</h1><p class="lead">컨셉 시트를 바탕으로 캐릭터를 간단히 스케치해 주세요. 잘 그릴 필요는 없습니다 — 형태와 핵심 특징만 표현되면 충분합니다. (권장 ${Math.round(CONFIG.SKETCH_SUGGESTED_SEC / 60)}분)</p>
+  <div class="split">
+    <div class="card concept-panel">${conceptPanelHtml({ withSketch: false })}</div>
+    <div class="card">
+      <div class="sketch-tools">
+        <button class="secondary on" data-tool="pen">펜</button>
+        <button class="secondary" data-tool="eraser">지우개</button>
+        <select id="size" style="width:auto"><option value="3">가늘게</option><option value="6" selected>보통</option><option value="12">굵게</option></select>
+        <button class="secondary" id="undo">되돌리기</button>
+        <button class="secondary" id="clear">전체 지우기</button>
+        <span class="muted" id="sketchTimer"></span>
+      </div>
+      <canvas id="sketch" width="900" height="1200"></canvas>
+      <p class="muted" style="margin-top:10px">종이에 그렸다면: <input type="file" id="upload" accept="image/*" style="width:auto"> (사진 업로드 시 위 캔버스 내용을 대체합니다)</p>
+      <div class="err" id="err"></div>
+      <div class="actions"><button id="next">스케치 완료</button></div>
+    </div>
+  </div>`);
+  const cv = $('#sketch'), ctx = cv.getContext('2d');
+  const blank = () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); };
+  blank();
+  let tool = 'pen', drawing = false, strokes = S.sketch.strokes || 0, source = 'canvas';
+  const undo = [];
+  if (S.sketch.dataUrl) { const im = new Image(); im.onload = () => ctx.drawImage(im, 0, 0, cv.width, cv.height); im.src = S.sketch.dataUrl; }
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener('pointerdown', e => {
+    undo.push(ctx.getImageData(0, 0, cv.width, cv.height)); if (undo.length > 30) undo.shift();
+    drawing = true; cv.setPointerCapture(e.pointerId);
+    ctx.lineCap = ctx.lineJoin = 'round'; ctx.strokeStyle = tool === 'pen' ? '#111' : '#fff';
+    ctx.lineWidth = +$('#size').value * (tool === 'eraser' ? 3 : 1);
+    const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + .1, y + .1); ctx.stroke();
+  });
+  cv.addEventListener('pointermove', e => { if (!drawing) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); });
+  const end = () => { if (drawing) { drawing = false; strokes++; source = 'canvas'; } };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  $$('[data-tool]').forEach(b => b.onclick = () => { tool = b.dataset.tool; $$('[data-tool]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#undo').onclick = () => { const d = undo.pop(); if (d) { ctx.putImageData(d, 0, 0); strokes = Math.max(0, strokes - 1); } };
+  $('#clear').onclick = () => { undo.push(ctx.getImageData(0, 0, cv.width, cv.height)); blank(); strokes = 0; };
+  $('#upload').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const url = await blobToDataUrl(f); const im = new Image();
+    im.onload = () => { blank(); const s = Math.min(cv.width / im.width, cv.height / im.height); ctx.drawImage(im, (cv.width - im.width * s) / 2, (cv.height - im.height * s) / 2, im.width * s, im.height * s); source = 'upload'; strokes = Math.max(strokes, 1); };
+    im.src = url;
+  };
+  const t0 = Date.now();
+  timerHandle = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $('#sketchTimer').textContent = `경과 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
+  $('#next').onclick = () => {
+    if (strokes < 1) return $('#err').textContent = '간단하게라도 스케치해 주세요.';
+    S.sketch = { dataUrl: cv.toDataURL('image/jpeg', 0.85), strokes, source, seconds: Math.round((Date.now() - t0) / 1000) };
+    log('sketch_submit', { strokes, source, seconds: S.sketch.seconds });
+    go('genIntro');
+  };
+};
+
+/* ---------- 6. Generation intro (조건별 안내) ---------- */
+SCREENS.genIntro = function () {
+  const A = S.condition === 'A';
+  const engNote = S.provider === 'pollinations' ? '<li>이 도구는 <b>영어 프롬프트</b>를 더 정확하게 이해합니다. 가능하면 영어로 작성해 주세요.</li>' : '';
+  h(`<h1>AI 캐릭터 생성 안내</h1>
+  <div class="card">
+    <p>이제 AI 이미지 생성 도구로 여러분의 캐릭터를 완성합니다. 왼쪽에 컨셉 시트와 스케치가 계속 표시됩니다.</p>
+    <ul>
+      <li>캐릭터의 모습을 설명하는 <b>프롬프트(텍스트)</b>를 작성하면 AI가 이미지를 생성합니다.</li>
+      ${A
+        ? `<li><b>프롬프트는 한 번만 작성하고, 이미지는 한 번만 생성할 수 있습니다.</b> 생성 후에는 수정하거나 다시 생성할 수 없으며, 그 결과가 최종 캐릭터가 됩니다.</li>`
+        : `<li>첫 이미지를 생성한 후, 결과를 보고 <b>프롬프트를 수정해 최대 ${CONFIG.MAX_ATTEMPTS_B - 1}번 더 생성</b>할 수 있습니다 (총 ${CONFIG.MAX_ATTEMPTS_B}회).</li>
+           ${CONFIG.B_FINAL_SELECTION === 'any' ? '<li>생성한 이미지 중 하나를 최종 캐릭터로 선택해 제출합니다.</li>' : '<li>마지막으로 생성한 이미지가 최종 캐릭터가 됩니다.</li>'}`}
+      <li>제한 시간은 <b>${Math.round(CONFIG.GEN_TIME_LIMIT_SEC / 60)}분</b>입니다. 이미지 생성에는 몇 초에서 수십 초가 걸릴 수 있습니다.</li>
+      ${engNote}
+    </ul>
+  </div>
+  <div class="actions"><button id="next">시작</button></div>`);
+  $('#next').onclick = () => go('gen');
+};
+
+/* ---------- 7. Generation ---------- */
+SCREENS.gen = function () {
+  const A = S.condition === 'A';
+  const G = S.gen;
+  if (!G.phaseStart) { G.phaseStart = now(); G.phaseStartMs = Date.now(); }
+  const maxAttempts = A ? 1 : CONFIG.MAX_ATTEMPTS_B;
+  let busy = false;
+
+  h(`<h1>AI 캐릭터 생성 <span class="pill">${A ? '1회 생성' : '최대 ' + maxAttempts + '회 생성'}</span></h1>
+  <div class="split">
+    <div class="card concept-panel">${conceptPanelHtml()}</div>
+    <div class="card">
+      <div class="gen-status"><span id="attemptInfo"></span><span class="timer" id="timer"></span></div>
+      <label class="field" for="prompt">프롬프트</label>
+      <textarea id="prompt" style="min-height:120px" placeholder="예: a young lantern keeper with silver braided hair, wearing a patched blue coat, carrying a glowing jar..."></textarea>
+      <div class="actions" style="justify-content:space-between;margin-top:10px">
+        <span class="muted" id="chars"></span>
+        <button id="genBtn">이미지 생성</button>
+      </div>
+      <div id="pending"></div>
+      <div class="err" id="err"></div>
+      <div class="attempts" id="attempts"></div>
+      <div class="actions"><button id="submit" disabled>이 캐릭터로 제출</button></div>
+    </div>
+  </div>`);
+
+  const ta = $('#prompt');
+  const okAttempts = () => G.attempts.filter(a => a.ok);
+  const last = okAttempts().slice(-1)[0];
+  ta.value = G.draft ?? (last ? last.prompt : '');
+  ta.addEventListener('input', () => {
+    G.draft = ta.value; $('#chars').textContent = ta.value.length + '자';
+    $('#genBtn').disabled = locked() || busy || !ta.value.trim() || cooldownLeft() > 0;
+  });
+  ta.addEventListener('focus', () => log('prompt_focus'));
+  $('#chars').textContent = ta.value.length + '자';
+
+  const prov = PROVIDERS[S.provider];
+  const cooldownLeft = () => Math.max(0, Math.ceil(((G.nextAllowedMs || 0) - Date.now()) / 1000));
+  const timeLeft = () => CONFIG.GEN_TIME_LIMIT_SEC - Math.floor((Date.now() - G.phaseStartMs) / 1000);
+  const locked = () => okAttempts().length >= maxAttempts || (G.timedOut && okAttempts().length > 0);
+
+  function render() {
+    const n = okAttempts().length;
+    $('#attemptInfo').textContent = `생성 ${n} / ${maxAttempts}` + (G.timedOut ? ' · 시간 종료' : '');
+    const lk = locked();
+    ta.disabled = lk || busy;
+    const cd = cooldownLeft();
+    $('#genBtn').disabled = lk || busy || !ta.value.trim() || cd > 0;
+    $('#genBtn').textContent = cd > 0 && !lk ? `다음 생성 가능까지 ${cd}초` : n === 0 ? '이미지 생성' : '수정한 프롬프트로 다시 생성';
+    if (lk && !A && !G.timedOut) $('#err').textContent = '';
+    const selectable = !A && CONFIG.B_FINAL_SELECTION === 'any' && n > 1;
+    $('#attempts').innerHTML = okAttempts().map(a => `
+      <div class="attempt ${selectable ? 'selectable' : ''} ${G.finalIdx === a.idx ? 'selected' : ''}" data-idx="${a.idx}">
+        <img src="${a.image}" alt="생성 ${a.n}">
+        <div class="cap"><span>#${a.n}</span><span>${G.finalIdx === a.idx ? '✓ 최종 선택' : selectable ? '클릭하여 선택' : ''}</span></div>
+      </div>`).join('');
+    if (selectable) $$('.attempt').forEach(el => el.onclick = () => { G.finalIdx = +el.dataset.idx; log('select_final', { idx: G.finalIdx }); save(); render(); });
+    $('#submit').disabled = busy || G.finalIdx == null;
+    if (A && n === 1) $('#err').innerHTML = '<span class="muted">생성이 완료되었습니다. 이 이미지가 최종 캐릭터입니다.</span>';
+  }
+
+  $('#genBtn').onclick = async () => {
+    const prompt = ta.value.trim(); if (!prompt || busy || locked()) return;
+    busy = true; $('#err').textContent = ''; $('#pending').innerHTML = '<div class="spinner"></div><p class="muted" style="text-align:center">생성 중입니다…</p>';
+    render();
+    const prev = okAttempts().slice(-1)[0];
+    const seed = Math.floor(Math.random() * 1e9);
+    const att = { idx: G.attempts.length, prompt, fullPrompt: prompt + CONFIG.STYLE_SUFFIX, seed,
+      revisedFromPrev: prev ? prev.prompt !== prompt : null, requestedAt: now(), tRequestMs: Date.now() - G.phaseStartMs };
+    log('generate_request', { idx: att.idx, prompt, seed });
+    if (prov.cooldownSec) G.nextAllowedMs = Date.now() + prov.cooldownSec * 1000;
+    try {
+      att.image = await PROVIDERS[S.provider].generate(att.fullPrompt, seed);
+      att.ok = true; att.n = okAttempts().length + 1;
+      G.finalIdx = att.idx;   // 기본 선택 = 가장 최근
+      G.draft = prompt;
+    } catch (e) {
+      att.ok = false; att.error = String(e.message || e);
+      if (e.retryAfterSec) G.nextAllowedMs = Date.now() + (e.retryAfterSec + 1) * 1000;
+      $('#err').textContent = '생성에 실패했습니다. 잠시 후 다시 시도해 주세요. (횟수에 포함되지 않습니다)';
+    }
+    att.receivedAt = now(); att.latencyMs = Date.parse(att.receivedAt) - Date.parse(att.requestedAt);
+    G.attempts.push(att);
+    log('generate_response', { idx: att.idx, ok: att.ok, latencyMs: att.latencyMs, error: att.error });
+    busy = false; $('#pending').innerHTML = '';
+    await save(); render();
+  };
+
+  $('#submit').onclick = async () => {
+    if (G.finalIdx == null) return;
+    if (!A && !locked() && !confirm('아직 추가 생성 기회가 남아 있습니다. 지금 제출할까요?')) return;
+    G.phaseEnd = now(); G.genSeconds = Math.round((Date.now() - G.phaseStartMs) / 1000);
+    log('final_submit', { finalIdx: G.finalIdx, genSeconds: G.genSeconds });
+    go('postPO');
+  };
+
+  const tick = () => {
+    const t = timeLeft(), el = $('#timer'); if (!el) return;
+    const s = Math.max(0, t);
+    el.textContent = `남은 시간 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    el.classList.toggle('low', s <= 60);
+    if (!busy && G.nextAllowedMs && Date.now() < G.nextAllowedMs + 1500) render();   // 쿨다운 카운트다운 갱신
+    if (t <= 0 && !G.timedOut) {
+      G.timedOut = true; log('time_up', { okAttempts: okAttempts().length });
+      $('#err').textContent = okAttempts().length ? '제한 시간이 끝났습니다. 최종 캐릭터를 제출해 주세요.' : '제한 시간이 끝났습니다. 이미지를 한 번 생성한 뒤 제출해 주세요.';
+      save(); render();
+    }
+  };
+  tick(); timerHandle = setInterval(tick, 1000);
+  render();
+};
+
+/* ---------- 8. Post-survey: PO ---------- */
+SCREENS.postPO = function () {
+  h(`<h1>사후 설문</h1><p class="lead">여러분이 최종 제출한 캐릭터를 보며 답해 주세요.</p>
+  <img class="final-img" src="${finalImage()}" alt="최종 캐릭터">
+  <div class="card">${likertHtml('PO')}</div>
+  <div class="err" id="err"></div><div class="actions"><button id="next">다음</button></div>`);
+  $('#next').onclick = () => readLikert('PO') ? go('postIA') : ($('#err').textContent = '모든 문항에 응답해 주세요.');
+};
+
+/* ---------- 9. Post-survey: IA (컨셉 시트·스케치와 나란히) ---------- */
+SCREENS.postIA = function () {
+  const c = S.concept;
+  h(`<h1>사후 설문</h1><p class="lead">AI 사용 전에 작성한 컨셉 시트·스케치와 최종 캐릭터를 비교하며 답해 주세요.</p>
+  <div class="three">
+    <div class="card concept-panel" style="position:static;margin:0">${conceptPanelHtml({ withSketch: false })}</div>
+    <div><b>내 스케치</b><img src="${S.sketch.dataUrl}" alt="스케치"></div>
+    <div><b>최종 캐릭터</b><img src="${finalImage()}" alt="최종 캐릭터"></div>
+  </div>
+  <div class="card">${likertHtml('IA')}</div>
+  <div class="err" id="err"></div><div class="actions"><button id="next">다음</button></div>`);
+  $('#next').onclick = () => readLikert('IA') ? go('postAU') : ($('#err').textContent = '모든 문항에 응답해 주세요.');
+};
+
+/* ---------- 10. Post-survey: AU + declared credit + CC ---------- */
+SCREENS.postAU = function () {
+  const p = S.post;
+  h(`<h1>사후 설문</h1>
+  <img class="final-img" src="${finalImage()}" alt="최종 캐릭터" style="max-width:220px">
+  <div class="card"><h2 style="margin-top:0">창작자 인식</h2>${likertHtml('AU')}</div>
+  <div class="card"><h2 style="margin-top:0">이 캐릭터를 공개적으로 공유한다면, 창작자를 어떻게 표기하시겠습니까?</h2>
+    <span class="en">If you shared this character publicly, how would you credit its creator?</span>
+    <div class="radio-list">${CREDIT_OPTIONS.map(([v, ko, en]) => `<label><input type="radio" name="credit" value="${v}" ${p.credit === v ? 'checked' : ''}>${ko} <span class="en" style="display:inline">· ${en}</span></label>`).join('')}</div>
+    <input type="text" id="creditOther" placeholder="기타 선택 시 작성" value="${esc(p.credit_other)}" style="display:${p.credit === 'other' ? 'block' : 'none'}">
+  </div>
+  <div class="card"><h2 style="margin-top:0">제작 과정에 대한 인식</h2>${likertHtml('CC')}</div>
+  <div class="err" id="err"></div><div class="actions"><button id="next">다음</button></div>`);
+  $$('input[name="credit"]').forEach(r => r.onchange = () => { $('#creditOther').style.display = r.value === 'other' && r.checked ? 'block' : 'none'; });
+  $('#next').onclick = () => {
+    const a = readLikert('AU'), c = readLikert('CC');
+    const cr = app.querySelector('input[name="credit"]:checked');
+    if (!a || !c || !cr) return $('#err').textContent = '모든 문항에 응답해 주세요.';
+    p.credit = cr.value; p.credit_other = cr.value === 'other' ? $('#creditOther').value.trim() : '';
+    if (p.credit === 'other' && !p.credit_other) return $('#err').textContent = '기타 내용을 적어 주세요.';
+    go('postCov');
+  };
+};
+
+/* ---------- 11. Post-survey: covariates + open ---------- */
+SCREENS.postCov = function () {
+  const p = S.post;
+  h(`<h1>사후 설문 (마지막)</h1>
+  <div class="card">
+    <label class="field">최종 캐릭터의 전반적인 품질을 어떻게 평가하십니까?<span class="en">How would you rate the overall quality of your final character?</span></label>
+    <p class="muted" style="margin:0">0 = 매우 낮은 품질 · 100 = 매우 높은 품질</p>${sliderHtml('quality', p.quality)}
+    <label class="field" style="margin-top:22px">이 캐릭터를 만드는 데 얼마나 노력을 기울였습니까?<span class="en">How much effort did you put into creating this character?</span></label>
+    <p class="muted" style="margin:0">0 = 매우 적은 노력 · 100 = 매우 많은 노력</p>${sliderHtml('effort', p.effort)}
+  </div>
+  <div class="card">
+    <label class="field">이 캐릭터가 '내 것'이라고 느껴진(혹은 느껴지지 않은) 이유가 있다면 자유롭게 적어 주세요. <small>(선택)</small></label>
+    <textarea id="open1">${esc(p.open_ownership)}</textarea>
+    <label class="field">AI 생성 과정에서 기대와 달랐던 점이 있었다면 적어 주세요. <small>(선택)</small></label>
+    <textarea id="open2">${esc(p.open_process)}</textarea>
+  </div>
+  <div class="err" id="err"></div><div class="actions"><button id="next">제출</button></div>`);
+  bindSliders();
+  $('#next').onclick = async () => {
+    const q = $('[data-slider="quality"]'), e = $('[data-slider="effort"]');
+    if (!q.dataset.touched || !e.dataset.touched) return $('#err').textContent = '두 슬라이더를 모두 움직여 응답해 주세요.';
+    p.quality = +q.querySelector('input').value; p.effort = +e.querySelector('input').value;
+    p.open_ownership = $('#open1').value.trim(); p.open_process = $('#open2').value.trim();
+    S.completedAt = now();
+    log('session_complete');
+    go('done');
+  };
+};
+
+/* ---------- 12. Done ---------- */
+SCREENS.done = async function () {
+  await save();
+  // 세션별 백업 파일 자동 저장 (브라우저 데이터 손실 대비)
+  download(`${S.id}.json`, JSON.stringify(S, null, 1), 'application/json');
+  h(`<h1>참여해 주셔서 감사합니다!</h1>
+  <div class="card"><p>모든 과정이 완료되었습니다. 연구자에게 알려 주세요.</p>
+  <img class="final-img" src="${finalImage()}" alt="최종 캐릭터" style="max-width:240px"></div>
+  <p class="muted" style="text-align:center">연구자: Ctrl+Shift+A 로 연구자 화면으로 이동</p>`);
+};
+
+/* =====================================================================
+ * Export
+ * ===================================================================== */
+function mean(xs) { const v = xs.filter(x => typeof x === 'number'); return v.length === xs.length && v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(3) : null; }
+function flatten(s) {
+  const p = s.post || {}, g = s.gen || { attempts: [] };
+  const ok = g.attempts.filter(a => a.ok);
+  const fin = ok.find(a => a.idx === g.finalIdx);
+  const sc = k => SCALES[k].items.map(([id]) => p[id]);
+  const row = {
+    pid: s.pid, session_id: s.id, condition: s.condition, is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
+    provider: s.provider, model: s.model, started_at: s.startedAt, completed_at: s.completedAt,
+    total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
+    ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),
+    pre_ai_tools: (s.pre?.ai_tools || []).join('|'),
+    concept_chars: Object.values(s.concept || {}).join('').length,
+    sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,
+    n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
+    n_prompt_revisions: ok.filter(a => a.revisedFromPrev).length,
+    final_attempt_n: fin ? fin.n : null, final_is_last: fin ? (fin.n === ok.length ? 1 : 0) : null,
+    gen_seconds: g.genSeconds ?? null, gen_timed_out: g.timedOut ? 1 : 0,
+    first_prompt: ok[0]?.prompt ?? '', final_prompt: fin?.prompt ?? '',
+    first_prompt_chars: ok[0]?.prompt.length ?? null, final_prompt_chars: fin?.prompt.length ?? null,
+  };
+  for (const k of Object.keys(SCALES)) { SCALES[k].items.forEach(([id]) => row[id] = p[id] ?? null); row[k + '_mean'] = mean(sc(k)); }
+  Object.assign(row, { credit: p.credit ?? null, credit_other: p.credit_other ?? '', quality: p.quality ?? null, effort: p.effort ?? null,
+    open_ownership: p.open_ownership ?? '', open_process: p.open_process ?? '' });
+  return row;
+}
+function toCsv(rows) {
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const cell = v => { if (v == null) return ''; const s = String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return [cols.join(','), ...rows.map(r => cols.map(c => cell(r[c])).join(','))].join('\n');
+}
+function exportCsv(sessions) { download(`ownership_study_${stamp()}.csv`, '﻿' + toCsv(sessions.map(flatten)), 'text/csv'); }
+function download(name, text, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function stamp() { return new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-'); }
+
+/* =====================================================================
+ * Boot
+ * ===================================================================== */
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+    if (S && !S.completedAt && !confirm('진행 중인 세션을 일시정지하고 연구자 화면으로 갈까요? (목록에서 재개 가능)')) return;
+    if (S) { log('admin_interrupt'); save(); }
+    S = null; clearInterval(timerHandle); SCREENS.admin();
+  }
+});
+window.addEventListener('beforeunload', e => { if (S && !S.completedAt) { e.preventDefault(); e.returnValue = ''; } });
+SCREENS.admin();
+</script>
+</body>
+</html>

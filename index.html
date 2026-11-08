@@ -161,17 +161,29 @@ const LIKERT_ANCHORS = ['전혀 그렇지 않다', '매우 그렇다'];
  * ===================================================================== */
 const DB = {
   _db: null,
+  mem: null,   // IndexedDB를 못 쓰는 브라우저(시크릿 모드, 인앱 브라우저 등)용 임시 저장소
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open('ownership-study', 1);
-      r.onupgradeneeded = () => r.result.createObjectStore('sessions', { keyPath: 'id' });
-      r.onsuccess = () => { this._db = r.result; res(r.result); };
-      r.onerror = () => rej(r.error);
+      try {
+        const r = indexedDB.open('ownership-study', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('sessions', { keyPath: 'id' });
+        r.onsuccess = () => { this._db = r.result; res(r.result); };
+        r.onerror = () => rej(r.error);
+        r.onblocked = () => rej(new Error('blocked'));
+        setTimeout(() => rej(new Error('IndexedDB timeout')), 3000);
+      } catch (e) { rej(e); }
     });
   },
   async tx(mode, fn) {
-    const db = await this.open();
+    if (!this.mem) {
+      try { await this.open(); } catch (e) { this.mem = new Map(); console.warn('IndexedDB unavailable, using memory', e); }
+    }
+    if (this.mem) {
+      const st = { put: s => this.mem.set(s.id, s), getAll: () => ({ result: [...this.mem.values()] }), delete: id => this.mem.delete(id) };
+      const out = fn(st); return out && out.result !== undefined ? out.result : undefined;
+    }
+    const db = this._db;
     return new Promise((res, rej) => {
       const t = db.transaction('sessions', mode);
       const out = fn(t.objectStore('sessions'));
@@ -373,6 +385,7 @@ SCREENS.admin = async function () {
   const provider = LS.get('provider', 'pollinations');
   h(`
   <h1>연구자 설정</h1>
+  ${DB.mem ? '<div class="card" style="border-color:var(--warn);color:var(--warn)">이 브라우저에서는 데이터 저장소를 쓸 수 없어 <b>임시 저장</b> 중입니다 (새로고침하면 사라짐). 시크릿 모드나 앱 내 브라우저라면 일반 Chrome 창으로 열어 주세요. 세션이 끝나면 바로 CSV로 내보내세요.</div>' : ''}
   <p class="lead">참가자에게 화면을 넘기기 전에 이 화면에서 세션을 시작하세요. 진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
 
   <div class="card">
@@ -911,6 +924,14 @@ document.addEventListener('keydown', e => {
     S = null; clearInterval(timerHandle); SCREENS.admin();
   }
 });
+function showFatal(msg) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;background:#fff4f0;border:1px solid #b4441f;color:#b4441f;padding:10px 14px;border-radius:8px;font-size:14px;z-index:99';
+  d.textContent = '오류가 발생했습니다: ' + msg + ' — 이 메시지를 연구자에게 알려 주세요.';
+  document.body.appendChild(d);
+}
+window.addEventListener('error', e => showFatal(e.message));
+window.addEventListener('unhandledrejection', e => showFatal(e.reason?.message || String(e.reason)));
 window.addEventListener('beforeunload', e => { if (S && !S.completedAt) { e.preventDefault(); e.returnValue = ''; } });
 SCREENS.admin();
 </script>

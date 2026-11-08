@@ -39,7 +39,7 @@ def main():
             "provider": "fake", "model": "fake", "started_at": f"2026-11-20T10:{i:02d}:00Z",
             "completed_at": f"2026-11-20T10:{i:02d}:59Z", "total_minutes": round(rnd.uniform(20, 28), 1),
             "pre_ai_text_freq": rnd.randint(2, 5), "pre_ai_image_freq": rnd.randint(1, 4), "pre_ai_image_skill": rnd.randint(2, 6),
-            "pre_art_exp": rnd.randint(1, 4), "pre_char_exp": rnd.randint(1, 3), "pre_draw_skill": rnd.randint(1, 6),
+            "pre_art_exp": rnd.randint(1, 3), "pre_char_exp": rnd.randint(1, 3), "pre_draw_skill": rnd.randint(1, 6),
             "pre_age": rnd.randint(21, 32), "pre_gender": rnd.choice(["여성", "남성"]), "pre_ai_tools": "ChatGPT",
             "concept_chars": rnd.randint(120, 400), "sketch_strokes": rnd.randint(15, 120), "sketch_source": "canvas",
             "sketch_seconds": rnd.randint(90, 240), "n_generations": n_gen, "n_failed_generations": 0,

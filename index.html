@@ -360,15 +360,25 @@ function bindSliders() {
     if (!w.classList.contains('untouched')) w.dataset.touched = '1';
   });
 }
+const CONCEPT_FIELDS = [
+  { group: '기본', key: 'name', label: '캐릭터 이름', ph: '예: 미라', required: true },
+  { group: '기본', key: 'role', label: '세계관 속 역할·직업', ph: '예: 가장자리 섬의 견습 등불지기', required: true },
+  { group: '기본', key: 'personality', label: '성격', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: true, area: true },
+  { group: '외형', key: 'ageBody', label: '나이대·성별·체형', ph: '예: 10대 후반 소녀, 작고 마른 체격', required: true },
+  { group: '외형', key: 'face', label: '얼굴·표정', ph: '예: 동그란 눈, 주근깨, 늘 살짝 졸린 표정', required: true },
+  { group: '외형', key: 'hair', label: '헤어스타일·머리색', ph: '예: 은색 긴 머리를 한쪽으로 땋음', required: true },
+  { group: '외형', key: 'outfit', label: '의상', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
+  { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 빛나는 물고기가 든 유리병, 열쇠 꾸러미', required: false },
+  { group: '외형', key: 'colors', label: '대표 색상', ph: '예: 남색, 은색, 따뜻한 주황 불빛', required: true },
+  { group: '핵심', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 등에 메고 다니는 커다란 등불', required: true, area: true },
+  { group: '이야기', key: 'backstory', label: '배경 이야기', ph: '어떤 사연이 있는지, 등불이 꺼지는 사건과 어떤 관계인지', required: true, area: true },
+];
+
 function conceptPanelHtml({ withSketch = true } = {}) {
   const c = S.concept;
-  return `<dl>
-    <dt>이름</dt><dd>${esc(c.name)}</dd>
-    <dt>성격</dt><dd>${esc(c.personality)}</dd>
-    <dt>외형</dt><dd>${esc(c.looks)}</dd>
-    <dt>핵심 특징</dt><dd>${esc(c.keyFeature)}</dd>
-    <dt>배경 이야기</dt><dd>${esc(c.backstory)}</dd>
-  </dl>${withSketch && S.sketch?.dataUrl ? `<dt style="font-weight:700;color:var(--navy);margin-top:8px">스케치</dt><img src="${S.sketch.dataUrl}" alt="스케치">` : ''}`;
+  const rows = CONCEPT_FIELDS.filter(f => c[f.key]).map(f => `<dt>${f.label}</dt><dd>${esc(c[f.key])}</dd>`);
+  if (c.looks) rows.splice(2, 0, `<dt>외형</dt><dd>${esc(c.looks)}</dd>`);   // 이전 버전 세션 호환
+  return `<dl>${rows.join('')}</dl>${withSketch && S.sketch?.dataUrl ? `<dt style="font-weight:700;color:var(--navy);margin-top:8px">스케치</dt><img src="${S.sketch.dataUrl}" alt="스케치">` : ''}`;
 }
 function finalImage() { const a = S.gen.attempts.find(a => a.idx === S.gen.finalIdx); return a ? a.image : ''; }
 
@@ -384,7 +394,7 @@ SCREENS.admin = async function () {
   const sessions = (await DB.getAll()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const done = new Set(sessions.filter(s => s.completedAt && !s.isTest).map(s => s.pid));
   const nextRow = asg.table.find(r => !done.has(r.pid));
-  const provider = LS.get('provider', 'pollinations');
+  const provider = LS.get('provider', 'openai');
   h(`
   <h1>연구자 설정</h1>
   ${DB.mem ? '<div class="card" style="border-color:var(--warn);color:var(--warn)">이 브라우저에서는 데이터 저장소를 쓸 수 없어 <b>임시 저장</b> 중입니다 (새로고침하면 사라짐). 시크릿 모드나 앱 내 브라우저라면 일반 Chrome 창으로 열어 주세요. 세션이 끝나면 바로 CSV로 내보내세요.</div>' : ''}
@@ -471,6 +481,7 @@ SCREENS.admin = async function () {
     if (row && row.condition !== condSel.value && !confirm(`배정표(${row.condition})와 다른 조건(${condSel.value})으로 시작합니다. 계속할까요?`)) return;
     LS.set('openaiKey', $('#okey')?.value.trim() || LS.get('openaiKey', ''));
     const prov = $('#provider').value;
+    if (prov === 'openai' && !LS.get('openaiKey', '')) return alert('OpenAI API 키를 입력하세요. (테스트만 할 거라면 Mock을 선택)');
     S = {
       id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, condition: condSel.value,
       isTest: $('#isTest').checked, provider: prov, model: PROVIDERS[prov].model(),
@@ -533,10 +544,10 @@ SCREENS.pre = function () {
   </div>
   <div class="card">
     <h2 style="margin-top:0">창작 경험</h2>
-    <label class="field">그림·디자인·일러스트 등 시각 창작 경험</label>
-    <select name="art_exp"><option value="">선택</option>${['없음', '취미로 가끔', '취미로 꾸준히', '전공/교육 이수', '전문적으로 활동'].map((t, i) => `<option value="${i + 1}" ${p.art_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label class="field">그림을 그려 본 경험 <small>(그림·일러스트·디자인)</small></label>
+    <select name="art_exp"><option value="">선택</option>${['거의 없음', '취미로 그려 봄', '전공 또는 업무로 그림'].map((t, i) => `<option value="${i + 1}" ${p.art_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <label class="field">캐릭터/스토리 창작 경험 (글, 게임, TRPG, 웹툰 등)</label>
-    <select name="char_exp"><option value="">선택</option>${['없음', '해 본 적 있음', '여러 번 해 봄', '전공/업무로 함'].map((t, i) => `<option value="${i + 1}" ${p.char_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select name="char_exp"><option value="">선택</option>${['거의 없음', '취미로 해 봄', '전공 또는 업무로 함'].map((t, i) => `<option value="${i + 1}" ${p.char_exp == i + 1 ? 'selected' : ''}>${t}</option>`).join('')}</select>
     ${likertGenericHtml('draw_skill', '나는 그림을 잘 그리는 편이다.', p.draw_skill, LIKERT_ANCHORS)}
   </div>
   <div class="card">
@@ -577,28 +588,24 @@ SCREENS.world = function () {
 /* ---------- 4. Concept sheet ---------- */
 SCREENS.concept = function () {
   const c = S.concept;
-  const fields = [
-    ['name', '캐릭터 이름', '', false],
-    ['personality', '성격', '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', true],
-    ['looks', '외형', '예: 나이, 체형, 머리 모양과 색, 옷차림, 소지품 등', true],
-    ['keyFeature', '핵심 특징', '이 캐릭터를 한눈에 알아볼 수 있게 하는 시각적 특징 1–2가지', true],
-    ['backstory', '배경 이야기', '이 세계에서 어떤 역할을 하고, 어떤 사연이 있는지', true],
-  ];
-  h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">AI를 사용하기 전에, 만들고 싶은 캐릭터를 직접 구상해 적어 주세요. 이 내용은 이후 결과와 비교하는 데 사용됩니다.</p>
+  const fields = CONCEPT_FIELDS;
+  const groups = [...new Set(fields.map(f => f.group))];
+  const fieldHtml = f => `<label class="field" for="cf-${f.key}">${f.label}${f.required ? '' : ' <small>(선택)</small>'}</label>${f.area
+    ? `<textarea id="cf-${f.key}" name="${f.key}" style="min-height:64px" placeholder="${esc(f.ph)}">${esc(c[f.key])}</textarea>`
+    : `<input type="text" id="cf-${f.key}" name="${f.key}" placeholder="${esc(f.ph)}" value="${esc(c[f.key])}">`}`;
+  h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">AI를 사용하기 전에, 만들고 싶은 캐릭터를 직접 구상해 적어 주세요. 이 내용은 이후 결과와 비교하는 데 사용됩니다. 짧은 단어나 구로 적어도 괜찮습니다.</p>
   <div class="split">
     <div class="card concept-panel"><b>${esc(WORLD.title)}</b><div class="world" style="font-size:13.5px;margin-top:8px">${esc(WORLD.text)}</div></div>
-    <div class="card">${fields.map(([k, l, ph, area]) => `<label class="field">${l}</label>${area
-      ? `<textarea name="${k}" placeholder="${esc(ph)}">${esc(c[k])}</textarea>`
-      : `<input type="text" name="${k}" value="${esc(c[k])}">`}`).join('')}
+    <div class="card">${groups.map(g => `<h2 style="margin:${g === groups[0] ? 0 : 22}px 0 0;font-size:17px">${g}</h2>${fields.filter(f => f.group === g).map(fieldHtml).join('')}`).join('')}
       <div class="err" id="err"></div>
       <div class="actions"><button id="next">다음: 스케치</button></div>
     </div>
   </div>`);
   $('#next').onclick = () => {
-    for (const [k] of fields) S.concept[k] = app.querySelector(`[name="${k}"]`).value.trim();
-    const short = fields.filter(([k, , , area]) => S.concept[k].length < (area ? 5 : 1));
-    if (short.length) return $('#err').textContent = '모든 칸을 작성해 주세요 (짧게라도 괜찮습니다).';
-    log('concept_submit', { chars: Object.fromEntries(fields.map(([k]) => [k, S.concept[k].length])) });
+    for (const f of fields) S.concept[f.key] = app.querySelector(`[name="${f.key}"]`).value.trim();
+    const short = fields.filter(f => f.required && S.concept[f.key].length < 2);
+    if (short.length) return $('#err').textContent = `작성하지 않은 칸이 있습니다: ${short.map(f => f.label).join(', ')} (짧게라도 괜찮습니다)`;
+    log('concept_submit', { chars: Object.fromEntries(fields.map(f => [f.key, S.concept[f.key].length])) });
     go('sketch');
   };
 };

@@ -98,15 +98,17 @@
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
   N_TARGET: 12,                    // 블록 무선배정 표 크기 (A/B 각 절반)
-  MAX_ATTEMPTS_B: 3,               // 조건 B: 첫 생성 + 추가 2회
-  GEN_TIME_LIMIT_SEC: 360,         // AI 생성 단계 제한시간 (A/B 동일)
+  ROUNDS: 2,                       // 프롬프트 작성 단계 수 (A/B 동일). B만 단계 사이에 결과를 봄
+  ROUND_SEC: 180,                  // 각 작성 단계의 고정 시간 (일찍 끝낼 수 없음)
+  PROMPT_MIN_CHARS: 60,            // 프롬프트 길이 범위 (A/B 동일)
+  PROMPT_MAX_CHARS: 400,
   SKETCH_SUGGESTED_SEC: 180,       // 스케치 권장 시간 (안내용, 강제 X)
-  B_FINAL_SELECTION: 'last',       // 'last' = 마지막 결과 고정 / 'any' = B는 생성한 것 중 하나 선택
   IMAGE: { width: 768, height: 1024 },  // 동일 출력 포맷/비율 (3:4)
   // 모든 프롬프트 뒤에 붙는 고정 스타일 (참가자에게 보이지 않음) — "Same AI model and visual style"
   STYLE_SUFFIX: ', single full-body character, front view, character concept art, clean digital illustration, soft lighting, plain light background',
   POLLINATIONS_MODEL: 'flux',
-  OPENAI_MODEL: 'gpt-image-1',
+  OPENAI_MODEL: 'gpt-image-1.5',   // 연구자 화면에서 변경 가능
+  OPENAI_QUALITY: 'medium',        // low | medium | high (화질↑ = 비용·시간↑)
   GEN_TIMEOUT_MS: 120000,
 };
 
@@ -248,15 +250,15 @@ const PROVIDERS = {
     },
   },
   openai: {
-    label: 'OpenAI gpt-image-1 (API 키 필요, 한국어 프롬프트 이해 우수)',
-    model: () => 'openai/' + CONFIG.OPENAI_MODEL,
+    label: 'OpenAI GPT Image (유료 API 키 필요, 한국어 이해 우수 — 본 실험 권장)',
+    model: () => `openai/${LS.get('openaiModel', CONFIG.OPENAI_MODEL)}/${LS.get('openaiQuality', CONFIG.OPENAI_QUALITY)}`,
     async generate(fullPrompt) {
       const key = LS.get('openaiKey', '');
       if (!key) throw new Error('OpenAI API 키가 설정되지 않음');
       const r = await withTimeout(fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-        body: JSON.stringify({ model: CONFIG.OPENAI_MODEL, prompt: fullPrompt, size: '1024x1536', n: 1 }),
+        body: JSON.stringify({ model: LS.get('openaiModel', CONFIG.OPENAI_MODEL), prompt: fullPrompt, size: '1024x1536', quality: LS.get('openaiQuality', CONFIG.OPENAI_QUALITY), n: 1 }),
       }), CONFIG.GEN_TIMEOUT_MS);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
@@ -403,6 +405,10 @@ SCREENS.admin = async function () {
       </div>
       <div id="keyBox" style="display:${provider === 'openai' ? 'block' : 'none'}"><label class="field">OpenAI API Key <small>(이 브라우저에만 저장)</small></label>
         <input type="password" id="okey" value="${esc(LS.get('openaiKey', ''))}" placeholder="sk-...">
+        <div class="grid2" style="margin-top:8px">
+          <select id="omodel">${['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'].map(m => `<option ${LS.get('openaiModel', CONFIG.OPENAI_MODEL) === m ? 'selected' : ''}>${m}</option>`).join('')}</select>
+          <select id="oquality">${[['low', '낮음 (빠름·저렴)'], ['medium', '중간 (권장)'], ['high', '높음 (느림·비쌈)']].map(([v, t]) => `<option value="${v}" ${LS.get('openaiQuality', CONFIG.OPENAI_QUALITY) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        </div>
       </div>
     </div>
     <label style="display:block;margin-top:12px"><input type="checkbox" id="isTest"> 테스트/파일럿 세션 (분석 내보내기에서 표시됨)</label>
@@ -446,6 +452,8 @@ SCREENS.admin = async function () {
   pidSel.onchange = syncCond; syncCond();
   $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
   $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
+  $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
+  $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
   $('#testGen').onclick = async () => {
     LS.set('openaiKey', $('#okey')?.value.trim() || '');
     const out = $('#testOut'); out.textContent = '생성 중…';
@@ -468,7 +476,7 @@ SCREENS.admin = async function () {
       isTest: $('#isTest').checked, provider: prov, model: PROVIDERS[prov].model(),
       config: CONFIG, userAgent: navigator.userAgent,
       startedAt: now(), completedAt: null, screen: null, screenTimes: {},
-      pre: {}, concept: {}, sketch: {}, gen: { attempts: [], finalIdx: null, phaseStart: null, phaseEnd: null, timedOut: false }, post: {}, events: [],
+      pre: {}, concept: {}, sketch: {}, gen: { attempts: [], finalIdx: null, phaseStart: null, phaseEnd: null }, post: {}, events: [],
     };
     log('session_start', { condition: S.condition, provider: prov });
     go('consent');
@@ -492,7 +500,7 @@ SCREENS.consent = function () {
   <div class="card">
     <p>본 연구는 <b>AI를 활용한 캐릭터 창작 과정에서 사람들이 어떤 경험을 하는지</b> 알아보기 위한 수업 연구입니다 (GCT573 인지와 정서, Team 2).</p>
     <ul>
-      <li>소요 시간: 약 20분</li>
+      <li>소요 시간: 약 25분</li>
       <li>진행: 사전 설문 → 캐릭터 컨셉 작성 및 스케치 → AI 이미지 생성 → 사후 설문</li>
       <li>입력하신 프롬프트, 생성된 이미지, 응답, 단계별 소요 시간이 기록됩니다.</li>
       <li>수집된 자료는 익명(참가자 번호)으로 처리되며 수업 연구 목적으로만 사용됩니다.</li>
@@ -654,135 +662,166 @@ SCREENS.sketch = function () {
 /* ---------- 6. Generation intro (조건별 안내) ---------- */
 SCREENS.genIntro = function () {
   const A = S.condition === 'A';
+  const mins = CONFIG.ROUND_SEC / 60;
   const engNote = S.provider === 'pollinations' ? '<li>이 도구는 <b>영어 프롬프트</b>를 더 정확하게 이해합니다. 가능하면 영어로 작성해 주세요.</li>' : '';
   h(`<h1>AI 캐릭터 생성 안내</h1>
   <div class="card">
-    <p>이제 AI 이미지 생성 도구로 여러분의 캐릭터를 완성합니다. 왼쪽에 컨셉 시트와 스케치가 계속 표시됩니다.</p>
+    <p>이제 AI 이미지 생성 도구로 여러분의 캐릭터를 완성합니다. 캐릭터의 모습을 설명하는 <b>프롬프트(텍스트)</b>를 쓰면 AI가 이미지를 만듭니다. 왼쪽에 컨셉 시트와 스케치가 계속 표시됩니다.</p>
+    <p><b>진행 순서</b></p>
+    <ol>
+      <li><b>1단계 (${mins}분)</b> — 프롬프트를 작성합니다.${A ? '' : ' 시간이 끝나면 이 프롬프트로 이미지가 생성됩니다.'}</li>
+      <li><b>2단계 (${mins}분)</b> — ${A
+        ? '이미지 없이, 1단계에서 쓴 프롬프트를 검토하고 다듬습니다.'
+        : '생성된 이미지를 보고 프롬프트를 수정합니다.'}</li>
+      <li>2단계의 프롬프트로 <b>최종 이미지</b>가 생성되며, 그 이미지가 여러분의 최종 캐릭터가 됩니다.</li>
+    </ol>
     <ul>
-      <li>캐릭터의 모습을 설명하는 <b>프롬프트(텍스트)</b>를 작성하면 AI가 이미지를 생성합니다.</li>
-      ${A
-        ? `<li><b>프롬프트는 한 번만 작성하고, 이미지는 한 번만 생성할 수 있습니다.</b> 생성 후에는 수정하거나 다시 생성할 수 없으며, 그 결과가 최종 캐릭터가 됩니다.</li>`
-        : `<li>첫 이미지를 생성한 후, 결과를 보고 <b>프롬프트를 수정해 최대 ${CONFIG.MAX_ATTEMPTS_B - 1}번 더 생성</b>할 수 있습니다 (총 ${CONFIG.MAX_ATTEMPTS_B}회).</li>
-           ${CONFIG.B_FINAL_SELECTION === 'any' ? '<li>생성한 이미지 중 하나를 최종 캐릭터로 선택해 제출합니다.</li>' : '<li>마지막으로 생성한 이미지가 최종 캐릭터가 됩니다.</li>'}`}
-      <li>제한 시간은 <b>${Math.round(CONFIG.GEN_TIME_LIMIT_SEC / 60)}분</b>입니다. 이미지 생성에는 몇 초에서 수십 초가 걸릴 수 있습니다.</li>
+      <li>각 단계는 <b>정확히 ${mins}분</b>이며, 시간이 끝나면 자동으로 다음 단계로 넘어갑니다. 일찍 끝낼 수 없으니 남는 시간에는 프롬프트를 더 다듬어 주세요.</li>
+      <li>프롬프트는 <b>${CONFIG.PROMPT_MIN_CHARS}자 이상 ${CONFIG.PROMPT_MAX_CHARS}자 이하</b>로 작성해 주세요.</li>
       ${engNote}
     </ul>
   </div>
-  <div class="actions"><button id="next">시작</button></div>`);
+  <div class="actions"><button id="next">1단계 시작</button></div>`);
   $('#next').onclick = () => go('gen');
 };
 
-/* ---------- 7. Generation ---------- */
+/* ---------- 7. Generation — 2단계 고정 시간 · 동일 길이 범위 (A: 결과 없이 다듬기 / B: 결과 보고 수정) ---------- */
+function editDistance(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+
 SCREENS.gen = function () {
   const A = S.condition === 'A';
   const G = S.gen;
-  if (!G.phaseStart) { G.phaseStart = now(); G.phaseStartMs = Date.now(); }
-  const maxAttempts = A ? 1 : CONFIG.MAX_ATTEMPTS_B;
-  let busy = false;
+  const R = CONFIG.ROUNDS;
+  if (!G.phaseStart) Object.assign(G, { phaseStart: now(), phaseStartMs: Date.now(), rounds: [], round: 1, stage: 'write' });
+  const prov = PROVIDERS[S.provider];
+  const okAttempts = () => G.attempts.filter(a => a.ok);
+  const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  h(`<h1>AI 캐릭터 생성 <span class="pill">${A ? '1회 생성' : '최대 ' + maxAttempts + '회 생성'}</span></h1>
+  h(`<h1>AI 캐릭터 생성</h1>
   <div class="split">
     <div class="card concept-panel">${conceptPanelHtml()}</div>
-    <div class="card">
-      <div class="gen-status"><span id="attemptInfo"></span><span class="timer" id="timer"></span></div>
-      <label class="field" for="prompt">프롬프트</label>
-      <textarea id="prompt" style="min-height:120px" placeholder="예: a young lantern keeper with silver braided hair, wearing a patched blue coat, carrying a glowing jar..."></textarea>
-      <div class="actions" style="justify-content:space-between;margin-top:10px">
-        <span class="muted" id="chars"></span>
-        <button id="genBtn">이미지 생성</button>
-      </div>
-      <div id="pending"></div>
-      <div class="err" id="err"></div>
-      <div class="attempts" id="attempts"></div>
-      <div class="actions"><button id="submit" disabled>이 캐릭터로 제출</button></div>
-    </div>
+    <div class="card" id="genCard"></div>
   </div>`);
+  const card = $('#genCard');
 
-  const ta = $('#prompt');
-  const okAttempts = () => G.attempts.filter(a => a.ok);
-  const last = okAttempts().slice(-1)[0];
-  ta.value = G.draft ?? (last ? last.prompt : '');
-  ta.addEventListener('input', () => {
-    G.draft = ta.value; $('#chars').textContent = ta.value.length + '자';
-    $('#genBtn').disabled = locked() || busy || !ta.value.trim() || cooldownLeft() > 0;
-  });
-  ta.addEventListener('focus', () => log('prompt_focus'));
-  $('#chars').textContent = ta.value.length + '자';
+  /* --- 작성 단계 --- */
+  function stageWrite() {
+    const r = G.round;
+    if (!G.rounds[r - 1]) {
+      G.rounds[r - 1] = { n: r, startedAt: now(), startMs: Date.now(), inputEvents: 0, prompt: r > 1 ? G.rounds[r - 2].prompt : '' };
+      log('round_start', { round: r });
+      save();
+    }
+    const RD = G.rounds[r - 1];
+    const prevImg = !A && r > 1 ? okAttempts().slice(-1)[0] : null;
+    const title = r === 1 ? '프롬프트 작성' : A ? '프롬프트 검토·다듬기' : '결과를 보고 프롬프트 수정';
+    const guide = r === 1
+      ? '컨셉 시트와 스케치를 바탕으로 캐릭터를 설명하는 프롬프트를 작성하세요.'
+      : A ? '아직 이미지는 생성되지 않았습니다. 1단계에서 쓴 프롬프트를 검토하고 다듬어 주세요. 이 프롬프트로 최종 이미지가 생성됩니다.'
+          : '아래 1차 결과를 보고 프롬프트를 수정해 주세요. 이 프롬프트로 최종 이미지가 생성됩니다.';
+    card.innerHTML = `
+      <div class="gen-status"><span><span class="pill">${r} / ${R}단계</span> <b>${title}</b></span><span class="timer" id="timer"></span></div>
+      <p class="muted" style="margin-top:0">${guide}</p>
+      ${prevImg ? `<div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${prevImg.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>` : ''}
+      <textarea id="prompt" maxlength="${CONFIG.PROMPT_MAX_CHARS}" style="min-height:150px" placeholder="예: a young lantern keeper with silver braided hair, wearing a patched blue coat, carrying a glowing jar..."></textarea>
+      <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">시간이 끝나면 자동으로 넘어갑니다</span></div>
+      <div class="err" id="err"></div>`;
+    const ta = $('#prompt');
+    ta.value = RD.draft ?? RD.prompt ?? '';
+    const updChars = () => {
+      const n = ta.value.trim().length, okLen = n >= CONFIG.PROMPT_MIN_CHARS;
+      $('#chars').innerHTML = `<span style="color:${okLen ? 'var(--ok)' : 'var(--warn)'}">${n}자</span> / 최소 ${CONFIG.PROMPT_MIN_CHARS} · 최대 ${CONFIG.PROMPT_MAX_CHARS}`;
+    };
+    ta.addEventListener('input', () => { RD.draft = ta.value; RD.inputEvents++; updChars(); if (RD.overtime) tick(); });
+    updChars(); ta.focus();
 
-  const prov = PROVIDERS[S.provider];
-  const cooldownLeft = () => Math.max(0, Math.ceil(((G.nextAllowedMs || 0) - Date.now()) / 1000));
-  const timeLeft = () => CONFIG.GEN_TIME_LIMIT_SEC - Math.floor((Date.now() - G.phaseStartMs) / 1000);
-  const locked = () => okAttempts().length >= maxAttempts || (G.timedOut && okAttempts().length > 0);
-
-  function render() {
-    const n = okAttempts().length;
-    $('#attemptInfo').textContent = `생성 ${n} / ${maxAttempts}` + (G.timedOut ? ' · 시간 종료' : '');
-    const lk = locked();
-    ta.disabled = lk || busy;
-    const cd = cooldownLeft();
-    $('#genBtn').disabled = lk || busy || !ta.value.trim() || cd > 0;
-    $('#genBtn').textContent = cd > 0 && !lk ? `다음 생성 가능까지 ${cd}초` : n === 0 ? '이미지 생성' : '수정한 프롬프트로 다시 생성';
-    if (lk && !A && !G.timedOut) $('#err').textContent = '';
-    const selectable = !A && CONFIG.B_FINAL_SELECTION === 'any' && n > 1;
-    $('#attempts').innerHTML = okAttempts().map(a => `
-      <div class="attempt ${selectable ? 'selectable' : ''} ${G.finalIdx === a.idx ? 'selected' : ''}" data-idx="${a.idx}">
-        <img src="${a.image}" alt="생성 ${a.n}">
-        <div class="cap"><span>#${a.n}</span><span>${G.finalIdx === a.idx ? '✓ 최종 선택' : selectable ? '클릭하여 선택' : ''}</span></div>
-      </div>`).join('');
-    if (selectable) $$('.attempt').forEach(el => el.onclick = () => { G.finalIdx = +el.dataset.idx; log('select_final', { idx: G.finalIdx }); save(); render(); });
-    $('#submit').disabled = busy || G.finalIdx == null;
-    if (A && n === 1) $('#err').innerHTML = '<span class="muted">생성이 완료되었습니다. 이 이미지가 최종 캐릭터입니다.</span>';
+    function finish() {
+      clearInterval(timerHandle);
+      const elapsed = Math.round((Date.now() - RD.startMs) / 1000);
+      Object.assign(RD, { prompt: ta.value.trim(), endedAt: now(), writeSeconds: elapsed, overtimeSec: Math.max(0, elapsed - CONFIG.ROUND_SEC) });
+      delete RD.draft;
+      log('round_end', { round: r, chars: RD.prompt.length, inputEvents: RD.inputEvents, overtimeSec: RD.overtimeSec });
+      if (r < R) {
+        if (A) { G.round++; save(); stageWrite(); }
+        else { G.stage = 'generating'; save(); stageGenerate(RD.prompt, true); }
+      } else { G.stage = 'generating'; save(); stageGenerate(RD.prompt, false); }
+    }
+    function tick() {
+      const left = CONFIG.ROUND_SEC - Math.floor((Date.now() - RD.startMs) / 1000);
+      const el = $('#timer'); if (!el) return;
+      el.textContent = left > 0 ? `남은 시간 ${fmt(left)}` : '시간 종료';
+      el.classList.toggle('low', left <= 30);
+      if (left <= 0) {
+        if (ta.value.trim().length >= CONFIG.PROMPT_MIN_CHARS) return finish();
+        if (!RD.overtime) { RD.overtime = true; log('round_overtime', { round: r }); }
+        $('#err').textContent = `최소 ${CONFIG.PROMPT_MIN_CHARS}자 이상 작성하면 자동으로 다음 단계로 넘어갑니다.`;
+      }
+    }
+    clearInterval(timerHandle); tick(); timerHandle = setInterval(tick, 500);
   }
 
-  $('#genBtn').onclick = async () => {
-    const prompt = ta.value.trim(); if (!prompt || busy || locked()) return;
-    busy = true; $('#err').textContent = ''; $('#pending').innerHTML = '<div class="spinner"></div><p class="muted" style="text-align:center">생성 중입니다…</p>';
-    render();
-    const prev = okAttempts().slice(-1)[0];
-    const seed = Math.floor(Math.random() * 1e9);
-    const att = { idx: G.attempts.length, prompt, fullPrompt: prompt + CONFIG.STYLE_SUFFIX, seed,
-      revisedFromPrev: prev ? prev.prompt !== prompt : null, requestedAt: now(), tRequestMs: Date.now() - G.phaseStartMs };
-    log('generate_request', { idx: att.idx, prompt, seed });
-    if (prov.cooldownSec) G.nextAllowedMs = Date.now() + prov.cooldownSec * 1000;
-    try {
-      att.image = await PROVIDERS[S.provider].generate(att.fullPrompt, seed);
-      att.ok = true; att.n = okAttempts().length + 1;
-      G.finalIdx = att.idx;   // 기본 선택 = 가장 최근
-      G.draft = prompt;
-    } catch (e) {
-      att.ok = false; att.error = String(e.message || e);
-      if (e.retryAfterSec) G.nextAllowedMs = Date.now() + (e.retryAfterSec + 1) * 1000;
-      $('#err').textContent = '생성에 실패했습니다. 잠시 후 다시 시도해 주세요. (횟수에 포함되지 않습니다)';
+  /* --- 생성 단계 (실패/쿨다운 시 자동 재시도, 횟수에 포함 안 됨) --- */
+  async function stageGenerate(prompt, thenNextRound) {
+    clearInterval(timerHandle);
+    card.innerHTML = `<div class="spinner"></div><p class="muted" style="text-align:center" id="genMsg">${thenNextRound ? '1차' : '최종'} 이미지를 생성하고 있습니다…</p><div class="err" id="err" style="text-align:center"></div><div class="actions" style="justify-content:center" id="retryBox"></div>`;
+    for (let tries = 0; tries < 4; tries++) {
+      const wait = Math.max(0, Math.ceil(((G.nextAllowedMs || 0) - Date.now()) / 1000));
+      for (let s = wait; s > 0; s--) { $('#genMsg').textContent = `이미지 생성 대기 중… ${s}초`; await new Promise(r => setTimeout(r, 1000)); }
+      $('#genMsg').textContent = `${thenNextRound ? '1차' : '최종'} 이미지를 생성하고 있습니다…`;
+      const seed = Math.floor(Math.random() * 1e9);
+      const att = { idx: G.attempts.length, round: G.round, prompt, fullPrompt: prompt + CONFIG.STYLE_SUFFIX, seed, requestedAt: now(), tRequestMs: Date.now() - G.phaseStartMs };
+      log('generate_request', { idx: att.idx, round: G.round, seed });
+      if (prov.cooldownSec) G.nextAllowedMs = Date.now() + prov.cooldownSec * 1000;
+      try {
+        att.image = await prov.generate(att.fullPrompt, seed);
+        att.ok = true; att.n = okAttempts().length + 1;
+      } catch (e) {
+        att.ok = false; att.error = String(e.message || e);
+        if (e.retryAfterSec) G.nextAllowedMs = Date.now() + (e.retryAfterSec + 1) * 1000;
+      }
+      att.receivedAt = now(); att.latencyMs = Date.parse(att.receivedAt) - Date.parse(att.requestedAt);
+      G.attempts.push(att);
+      log('generate_response', { idx: att.idx, ok: att.ok, latencyMs: att.latencyMs, error: att.error });
+      await save();
+      if (att.ok) {
+        if (thenNextRound) { G.round++; G.stage = 'write'; await save(); return stageWrite(); }
+        G.finalIdx = att.idx; G.stage = 'final'; await save(); return stageFinal();
+      }
     }
-    att.receivedAt = now(); att.latencyMs = Date.parse(att.receivedAt) - Date.parse(att.requestedAt);
-    G.attempts.push(att);
-    log('generate_response', { idx: att.idx, ok: att.ok, latencyMs: att.latencyMs, error: att.error });
-    busy = false; $('#pending').innerHTML = '';
-    await save(); render();
-  };
+    $('#err').textContent = '이미지 생성에 계속 실패하고 있습니다. 연구자에게 알려 주세요.';
+    $('#retryBox').innerHTML = '<button id="retry">다시 시도</button>';
+    $('#retry').onclick = () => stageGenerate(prompt, thenNextRound);
+  }
 
-  $('#submit').onclick = async () => {
-    if (G.finalIdx == null) return;
-    if (!A && !locked() && !confirm('아직 추가 생성 기회가 남아 있습니다. 지금 제출할까요?')) return;
-    G.phaseEnd = now(); G.genSeconds = Math.round((Date.now() - G.phaseStartMs) / 1000);
-    log('final_submit', { finalIdx: G.finalIdx, genSeconds: G.genSeconds });
-    go('postPO');
-  };
+  /* --- 최종 결과 --- */
+  function stageFinal() {
+    clearInterval(timerHandle);
+    const fin = G.attempts.find(a => a.idx === G.finalIdx);
+    const first = !A ? okAttempts().find(a => a.idx !== G.finalIdx) : null;
+    card.innerHTML = `
+      <h2 style="margin-top:0">최종 캐릭터</h2>
+      <img class="final-img" src="${fin.image}" alt="최종 캐릭터">
+      ${first ? `<p class="muted" style="text-align:center">1차 결과</p><img src="${first.image}" alt="1차 결과" style="max-width:140px;display:block;margin:0 auto;border-radius:6px;opacity:.8">` : ''}
+      <div class="actions"><button id="submit">확인하고 설문으로 이동</button></div>`;
+    $('#submit').onclick = () => {
+      G.phaseEnd = now(); G.genSeconds = Math.round((Date.now() - G.phaseStartMs) / 1000);
+      log('final_submit', { finalIdx: G.finalIdx, genSeconds: G.genSeconds });
+      go('postPO');
+    };
+  }
 
-  const tick = () => {
-    const t = timeLeft(), el = $('#timer'); if (!el) return;
-    const s = Math.max(0, t);
-    el.textContent = `남은 시간 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    el.classList.toggle('low', s <= 60);
-    if (!busy && G.nextAllowedMs && Date.now() < G.nextAllowedMs + 1500) render();   // 쿨다운 카운트다운 갱신
-    if (t <= 0 && !G.timedOut) {
-      G.timedOut = true; log('time_up', { okAttempts: okAttempts().length });
-      $('#err').textContent = okAttempts().length ? '제한 시간이 끝났습니다. 최종 캐릭터를 제출해 주세요.' : '제한 시간이 끝났습니다. 이미지를 한 번 생성한 뒤 제출해 주세요.';
-      save(); render();
-    }
-  };
-  tick(); timerHandle = setInterval(tick, 1000);
-  render();
+  if (G.stage === 'final') stageFinal();
+  else if (G.stage === 'generating') { const r = G.rounds[G.round - 1]; stageGenerate(r.prompt, G.round < R); }
+  else stageWrite();
 };
 
 /* ---------- 8. Post-survey: PO ---------- */
@@ -876,6 +915,16 @@ SCREENS.done = async function () {
  * Export
  * ===================================================================== */
 function mean(xs) { const v = xs.filter(x => typeof x === 'number'); return v.length === xs.length && v.length ? +(v.reduce((a, b) => a + b, 0) / v.length).toFixed(3) : null; }
+function roundFields(rs) {
+  const r1 = rs[0] || {}, r2 = rs[1] || {};
+  return {
+    round1_prompt: r1.prompt ?? '', round1_chars: r1.prompt?.length ?? null, round1_input_events: r1.inputEvents ?? null, round1_seconds: r1.writeSeconds ?? null,
+    round2_prompt: r2.prompt ?? '', round2_chars: r2.prompt?.length ?? null, round2_input_events: r2.inputEvents ?? null, round2_seconds: r2.writeSeconds ?? null,
+    round2_edit_distance: r1.prompt != null && r2.prompt != null ? editDistance(r1.prompt, r2.prompt) : null,
+    round2_changed: r1.prompt != null && r2.prompt != null ? (r1.prompt !== r2.prompt ? 1 : 0) : null,
+    overtime_seconds: rs.reduce((t, r) => t + (r.overtimeSec || 0), 0),
+  };
+}
 function flatten(s) {
   const p = s.post || {}, g = s.gen || { attempts: [] };
   const ok = g.attempts.filter(a => a.ok);
@@ -890,11 +939,9 @@ function flatten(s) {
     concept_chars: Object.values(s.concept || {}).join('').length,
     sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,
     n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
-    n_prompt_revisions: ok.filter(a => a.revisedFromPrev).length,
-    final_attempt_n: fin ? fin.n : null, final_is_last: fin ? (fin.n === ok.length ? 1 : 0) : null,
-    gen_seconds: g.genSeconds ?? null, gen_timed_out: g.timedOut ? 1 : 0,
-    first_prompt: ok[0]?.prompt ?? '', final_prompt: fin?.prompt ?? '',
-    first_prompt_chars: ok[0]?.prompt.length ?? null, final_prompt_chars: fin?.prompt.length ?? null,
+    gen_seconds: g.genSeconds ?? null,
+    ...roundFields(g.rounds || []),
+    final_prompt: fin?.prompt ?? '', final_prompt_chars: fin?.prompt.length ?? null,
   };
   for (const k of Object.keys(SCALES)) { SCALES[k].items.forEach(([id]) => row[id] = p[id] ?? null); row[k + '_mean'] = mean(sc(k)); }
   Object.assign(row, { credit: p.credit ?? null, credit_other: p.credit_other ?? '', quality: p.quality ?? null, effort: p.effort ?? null,

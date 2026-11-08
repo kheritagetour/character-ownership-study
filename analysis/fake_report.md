@@ -7,10 +7,10 @@
 
 | 척도 | 문항 수 | 신뢰도 |
 |---|---|---|
-| PO | 5 | α = 0.93 |
-| IA | 3 | α = 0.94 |
-| CC | 3 | α = 0.84 |
-| AU | 2 | r = 0.91, Spearman-Brown = 0.95 |
+| PO | 5 | α = 0.95 |
+| IA | 3 | α = 0.96 |
+| CC | 3 | α = 0.94 |
+| AU | 2 | r = 0.70, Spearman-Brown = 0.82 |
 
 > N이 작아 α 추정치가 불안정함. 원척도: PO α=.905 (Chung et al.), CC α=.84 (Gong & Chen).
 
@@ -18,21 +18,21 @@
 
 | | A (n=6) | B (n=6) |
 |---|---|---|
-| M (SD) | 3.50 (0.72) | 4.83 (0.96) |
+| M (SD) | 4.17 (1.26) | 5.22 (1.38) |
 
-- Welch t(9.3) = 2.72, p(two-sided) = .023, p(one-sided, B>A) = .012
-- Hedges' g (B−A) = 1.45, 95% CI [0.18, 2.72]
-- Permutation test (exact, one-sided) p = .014 · Mann-Whitney p = .022
+- Welch t(9.9) = 1.39, p(two-sided) = .196, p(one-sided, B>A) = .098
+- Hedges' g (B−A) = 0.74, 95% CI [-0.43, 1.91]
+- Permutation test (exact, one-sided) p = .096 · Mann-Whitney p = .130
 
 ## 3. H1 — 심리적 소유감 (PO), 기대: B > A
 
 | | A (n=6) | B (n=6) |
 |---|---|---|
-| M (SD) | 3.93 (1.06) | 4.17 (0.88) |
+| M (SD) | 3.97 (0.85) | 4.63 (1.58) |
 
-- Welch t(9.7) = 0.41, p(two-sided) = .688, p(one-sided, B>A) = .344
-- Hedges' g (B−A) = 0.22, 95% CI [-0.91, 1.36]
-- Permutation test (exact, one-sided) p = .363 · Mann-Whitney p = .405
+- Welch t(7.7) = 0.91, p(two-sided) = .391, p(one-sided, B>A) = .196
+- Hedges' g (B−A) = 0.48, 95% CI [-0.66, 1.63]
+- Permutation test (exact, one-sided) p = .206 · Mann-Whitney p = .344
 
 ## 4. 2차 — 지각된 저자성
 
@@ -40,97 +40,120 @@
 
 | | A (n=6) | B (n=6) |
 |---|---|---|
-| M (SD) | 4.17 (1.21) | 5.17 (0.93) |
+| M (SD) | 4.00 (0.45) | 4.67 (1.47) |
 
-- Welch t(9.4) = 1.60, p(two-sided) = .142
-- Hedges' g (B−A) = 0.85, 95% CI [-0.33, 2.04]
-- Permutation test (exact, two-sided) p = .171 · Mann-Whitney p = .195
+- Welch t(5.9) = 1.06, p(two-sided) = .330
+- Hedges' g (B−A) = 0.57, 95% CI [-0.59, 1.72]
+- Permutation test (exact, two-sided) p = .374 · Mann-Whitney p = .466
 
 ### 4b. 공개 시 저자 표기 (declared credit)
 
 | | Myself | Myself+AI | Mainly AI |
 |---|---|---|---|
-| A | 1 | 3 | 2 |
-| B | 3 | 3 | 0 |
+| A | 0 | 6 | 0 |
+| B | 3 | 1 | 2 |
 
-- Fisher's exact (2×2: 'Myself' vs. 그 외): p = .545
-- 전체 표 permutation χ² test (Freeman-Halton 대응): χ² = 3.00, p ≈ .290
-- 소유감 낮음(PO<4)인데 '나 자신'으로 표기: 1명 (ghostwriter 패턴 확인용)
-- PO–AU 상관 r = 0.57
+- Fisher's exact (2×2: 'Myself' vs. 그 외): p = .182
+- 전체 표 permutation χ² test (Freeman-Halton 대응): χ² = 8.57, p ≈ .015
+- 소유감 낮음(PO<4)인데 '나 자신'으로 표기: 0명 (ghostwriter 패턴 확인용)
+- PO–AU 상관 r = 0.78
 
 ## 5. RQ2 (탐색) — 의도 일치도(IA)와 소유감(PO)
 
-- 전체 r(IA, PO) = 0.45, p = .146
-- 조건 A: r = 0.99, p < .001 (n=6)
-- 조건 B: r = 0.07, p = .888 (n=6)
+- 전체 r(IA, PO) = 0.87, p < .001
+- 조건 A: r = 0.77, p = .072 (n=6)
+- 조건 B: r = 0.94, p = .006 (n=6)
 
-**PO ~ IA + Condition** — R² = 0.24, adj. R² = 0.07, n = 12, df = 9
-
-| term | b | SE | t | p |
-|---|---|---|---|---|
-| Intercept | 3.87 | 0.37 | 10.41 | < .001 |
-| IA (centered) | 0.39 | 0.24 | 1.62 | .140 |
-| Condition (B=1) | 0.36 | 0.53 | 0.68 | .511 |
-
-**PO ~ IA × Condition (탐색)** — R² = 0.59, adj. R² = 0.43, n = 12, df = 8
+**PO ~ IA + Condition** — R² = 0.81, adj. R² = 0.76, n = 12, df = 9
 
 | term | b | SE | t | p |
 |---|---|---|---|---|
-| Intercept | 3.75 | 0.29 | 12.76 | < .001 |
-| IA (centered) | 1.07 | 0.32 | 3.31 | .011 |
-| Condition (B=1) | 0.42 | 0.41 | 1.01 | .340 |
-| IA × Condition | -1.03 | 0.40 | -2.59 | .032 |
+| Intercept | 4.03 | 0.25 | 16.07 | < .001 |
+| IA (centered) | 0.74 | 0.13 | 5.82 | < .001 |
+| Condition (B=1) | 0.54 | 0.35 | 1.53 | .160 |
+
+**PO ~ IA × Condition (탐색)** — R² = 0.83, adj. R² = 0.77, n = 12, df = 8
+
+| term | b | SE | t | p |
+|---|---|---|---|---|
+| Intercept | 4.01 | 0.25 | 16.05 | < .001 |
+| IA (centered) | 0.55 | 0.23 | 2.41 | .043 |
+| Condition (B=1) | 0.55 | 0.35 | 1.56 | .157 |
+| IA × Condition | 0.28 | 0.27 | 1.04 | .328 |
 
 > 의도 일치도가 조건 효과를 설명(매개)하는지 판단하려면 N=12로는 부족함 — 방향성만 보고.
 
 | | A (n=6) | B (n=6) |
 |---|---|---|
-| M (SD) | 4.28 (0.98) | 3.94 (1.39) |
+| M (SD) | 4.17 (1.21) | 4.33 (1.79) |
 
-- Welch t(9.0) = -0.48, p(two-sided) = .642
-- Hedges' g (B−A) = -0.26, 95% CI [-1.39, 0.88]
-- Permutation test (exact, two-sided) p = .684 · Mann-Whitney p = .517
+- Welch t(8.8) = 0.19, p(two-sided) = .854
+- Hedges' g (B−A) = 0.10, 95% CI [-1.03, 1.23]
+- Permutation test (exact, two-sided) p = .851 · Mann-Whitney p = 1.000
 
 ## 6. 공변량 통제 — PO ~ Condition + Quality + Effort
 
-R² = 0.04, adj. R² = -0.32, n = 12, df = 8
+R² = 0.24, adj. R² = -0.04, n = 12, df = 8
 
 | term | b | SE | t | p |
 |---|---|---|---|---|
-| Intercept | 4.03 | 0.50 | 8.05 | < .001 |
-| Condition (B=1) | 0.03 | 0.79 | 0.04 | .966 |
-| Quality (per 10pt) | 0.03 | 0.22 | 0.12 | .904 |
-| Effort (per 10pt) | 0.09 | 0.21 | 0.45 | .668 |
+| Intercept | 3.90 | 0.53 | 7.33 | < .001 |
+| Condition (B=1) | 0.79 | 0.76 | 1.04 | .329 |
+| Quality (per 10pt) | 0.31 | 0.28 | 1.14 | .289 |
+| Effort (per 10pt) | -0.29 | 0.30 | -0.99 | .352 |
 
-- quality: A 67.7 (19.2) vs B 81.2 (11.3), Welch p = .175, g = 0.79
-- effort: A 54.3 (20.4) vs B 72.0 (11.5), Welch p = .102, g = 0.99
+- quality: A 65.7 (7.5) vs B 67.5 (20.4), Welch p = .843, g = 0.11
+- effort: A 49.5 (12.6) vs B 55.8 (16.0), Welch p = .464, g = 0.41
+
+## 6b. 시간·길이 통제 점검 (교란 변인)
+
+설계상 두 조건 모두 2단계 × 고정 시간, 같은 글자 수 범위. 아래가 조건 간 비슷해야 '결과 확인 여부' 효과로 해석 가능.
+
+| 변수 | A M (SD) | B M (SD) | Welch p | g |
+|---|---|---|---|---|
+| round1_chars | 113.2 (58.5) | 165.8 (57.9) | .148 | 0.84 |
+| round2_chars | 145.2 (45.7) | 240.0 (66.9) | .019 | 1.53 |
+| final_prompt_chars | 145.2 (45.7) | 240.0 (66.9) | .019 | 1.53 |
+| round1_input_events | 214.3 (54.3) | 201.8 (80.0) | .759 | -0.17 |
+| round2_input_events | 76.5 (42.5) | 47.0 (34.7) | .218 | -0.70 |
+| round2_edit_distance | 33.0 (17.6) | 107.7 (42.9) | .006 | 2.10 |
+| round1_seconds | 180.0 (0.0) | 180.0 (0.0) | — | — |
+| round2_seconds | 180.0 (0.0) | 180.0 (0.0) | — | — |
+| overtime_seconds | 0.0 (0.0) | 0.0 (0.0) | — | — |
+
+> round2_edit_distance는 2단계에서 프롬프트를 얼마나 고쳤는지(문자 편집거리). B에서 크게 나오는 것은 조작의 일부로 해석.
+
+**PO ~ Condition + Final prompt length** — R² = 0.12, n = 12, df = 9
+
+| term | b | SE | t | p |
+|---|---|---|---|---|
+| Intercept | 4.21 | 0.63 | 6.65 | < .001 |
+| Condition (B=1) | 0.19 | 1.02 | 0.18 | .858 |
+| Final prompt length (per 100 chars) | 0.51 | 0.72 | 0.70 | .500 |
 
 ## 7. 과정 기록 (기술통계)
 
 | 변수 | A M (SD) | B M (SD) |
 |---|---|---|
-| n_generations | 1.0 (0.0) | 2.3 (0.5) |
-| n_prompt_revisions | 0.0 (0.0) | 1.3 (0.5) |
-| gen_seconds | 94.3 (18.9) | 216.3 (53.4) |
-| first_prompt_chars | 134.8 (47.0) | 123.5 (45.7) |
-| final_prompt_chars | 167.5 (46.6) | 187.5 (37.5) |
-| sketch_seconds | 140.0 (56.2) | 180.5 (43.1) |
-| concept_chars | 276.8 (64.3) | 291.7 (116.6) |
-| total_minutes | 19.7 (3.6) | 20.6 (1.9) |
+| n_generations | 1.0 (0.0) | 2.0 (0.0) |
+| n_failed_generations | 0.0 (0.0) | 0.0 (0.0) |
+| gen_seconds | 385.7 (11.4) | 413.3 (13.5) |
+| sketch_seconds | 157.0 (54.6) | 169.5 (41.3) |
+| concept_chars | 252.8 (89.0) | 291.7 (85.5) |
+| total_minutes | 24.1 (2.5) | 24.3 (2.9) |
 
-- B 조건에서 마지막이 아닌 이전 생성물을 최종 선택한 참가자: 1명
-- 생성 단계 시간 초과: 0명
+- 최소 글자 수 미달로 시간 초과한 참가자: 0명
 
 ## 8. 사전 특성 균형 점검
 
 | 변수 | A M | B M | Welch p |
 |---|---|---|---|
-| pre_ai_text_freq | 3.17 | 3.00 | .804 |
-| pre_ai_image_freq | 2.50 | 2.17 | .543 |
-| pre_ai_image_skill | 4.50 | 4.00 | .613 |
-| pre_art_exp | 2.50 | 2.00 | .473 |
-| pre_char_exp | 2.00 | 1.67 | .516 |
-| pre_draw_skill | 3.67 | 3.83 | .857 |
-| pre_age | 25.17 | 25.50 | .883 |
+| pre_ai_text_freq | 3.17 | 2.50 | .186 |
+| pre_ai_image_freq | 2.50 | 1.67 | .265 |
+| pre_ai_image_skill | 4.50 | 4.17 | .695 |
+| pre_art_exp | 2.83 | 2.17 | .267 |
+| pre_char_exp | 1.83 | 1.33 | .361 |
+| pre_draw_skill | 3.33 | 3.50 | .877 |
+| pre_age | 25.67 | 27.00 | .512 |
 
 > n=6/조건에서 80% 검정력(α=.05, 단측)을 가지려면 d ≈ 1.54 이상 필요 (양측 ≈ 1.8; d = 0.8을 검출하려면 조건당 약 21명). p값보다 효과크기·CI 중심으로 해석할 것.

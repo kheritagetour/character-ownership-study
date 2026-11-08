@@ -11,7 +11,9 @@ Team 2 — Creative involvement & psychological ownership
   - 2차    : AU  (Welch t), declared credit (Fisher exact 2x2: 'self' vs 기타, + 전체 표 exact permutation)
   - RQ2    : OLS  PO ~ IA + condition  (+ 상호작용 탐색)
   - 공변량 : OLS  PO ~ condition + quality + effort  (N=12에서는 해석 주의)
-  - 과정   : 생성 횟수, 수정 횟수, 생성 단계 시간 기술통계
+  - 통제점검: 프롬프트 길이·작성 시간·수정량이 조건 간 비슷한지 (교수님 피드백: 시간/길이 교란)
+            + OLS  PO ~ condition + final prompt length
+  - 과정   : 생성 횟수, 단계별 길이·입력량·시간 기술통계
 의존성: numpy, scipy (pandas/statsmodels 불필요)
 """
 import argparse
@@ -326,20 +328,39 @@ def main():
               f"Welch p {pe(c['p_two'])}, g = {c['g']:.2f}")
     w("")
 
+    # ---------------- 6b. time/length confound check
+    w("## 6b. 시간·길이 통제 점검 (교란 변인)\n")
+    w("설계상 두 조건 모두 2단계 × 고정 시간, 같은 글자 수 범위. 아래가 조건 간 비슷해야 '결과 확인 여부' 효과로 해석 가능.\n")
+    w("| 변수 | A M (SD) | B M (SD) | Welch p | g |\n|---|---|---|---|---|")
+    for v in ["round1_chars", "round2_chars", "final_prompt_chars", "round1_input_events", "round2_input_events",
+              "round2_edit_distance", "round1_seconds", "round2_seconds", "overtime_seconds"]:
+        c = compare(rows, v, alternative="two-sided")
+        if "error" not in c and not np.isnan(c["t"]):
+            w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | {fmt_p(c['p_two'])} | {c['g']:.2f} |")
+        elif "error" not in c:
+            w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | — | — |")
+    w("\n> round2_edit_distance는 2단계에서 프롬프트를 얼마나 고쳤는지(문자 편집거리). B에서 크게 나오는 것은 조작의 일부로 해석.\n")
+    L = col(rows, "final_prompt_chars")
+    res = ols(po, np.column_stack([one, b, (L - np.nanmean(L)) / 100]), ["Intercept", "Condition (B=1)", "Final prompt length (per 100 chars)"])
+    if res:
+        coefs, r2, adj, n, dof = res
+        w(f"**PO ~ Condition + Final prompt length** — R² = {r2:.2f}, n = {n}, df = {dof}\n")
+        w("| term | b | SE | t | p |\n|---|---|---|---|---|")
+        for nm, bb, se, t, p in coefs:
+            w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
+    w("")
+
     # ---------------- 7. process
     w("## 7. 과정 기록 (기술통계)\n")
     w("| 변수 | A M (SD) | B M (SD) |\n|---|---|---|")
-    for v in ["n_generations", "n_prompt_revisions", "gen_seconds", "first_prompt_chars", "final_prompt_chars",
-              "sketch_seconds", "concept_chars", "total_minutes"]:
+    for v in ["n_generations", "n_failed_generations", "gen_seconds", "sketch_seconds", "concept_chars", "total_minutes"]:
         y = col(rows, v)
         cell = []
         for g in ["A", "B"]:
             s = y[(cond == g) & ~np.isnan(y)]
             cell.append(f"{s.mean():.1f} ({s.std(ddof=1):.1f})" if len(s) > 1 else "—")
         w(f"| {v} | {cell[0]} | {cell[1]} |")
-    fin = [r for r in rows if r["condition"] == "B" and r.get("final_is_last") == "0"]
-    w(f"\n- B 조건에서 마지막이 아닌 이전 생성물을 최종 선택한 참가자: {len(fin)}명")
-    w(f"- 생성 단계 시간 초과: {sum(1 for r in rows if r.get('gen_timed_out') == '1')}명\n")
+    w(f"\n- 최소 글자 수 미달로 시간 초과한 참가자: {sum(1 for r in rows if to_num(r.get('overtime_seconds')) > 0)}명\n")
 
     # ---------------- 8. covariate balance
     w("## 8. 사전 특성 균형 점검\n")

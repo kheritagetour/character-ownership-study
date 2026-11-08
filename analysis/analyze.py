@@ -387,14 +387,16 @@ def main():
     # ---------------- 7. process
     w("## 7. 과정 기록 (기술통계)\n")
     w("| 변수 | A M (SD) | B M (SD) |\n|---|---|---|")
-    for v in ["n_generations", "n_failed_generations", "used_sketch", "gen_seconds", "sketch_seconds", "concept_chars", "total_minutes"]:
+    for v in ["n_generations", "n_failed_generations", "used_sketch", "gen_seconds", "concept_seconds", "sketch_seconds", "concept_chars", "total_minutes"]:
         y = col(rows, v)
         cell = []
         for g in ["A", "B"]:
             s = y[(cond == g) & ~np.isnan(y)]
             cell.append(f"{s.mean():.1f} ({s.std(ddof=1):.1f})" if len(s) > 1 else "—")
         w(f"| {v} | {cell[0]} | {cell[1]} |")
-    w(f"\n- 최소 글자 수 미달로 시간 초과한 참가자: {sum(1 for r in rows if to_num(r.get('overtime_seconds')) > 0)}명\n")
+    tm = col(rows, "total_minutes")
+    w(f"\n- 총 소요 시간: 최대 {np.nanmax(tm):.1f}분, 30분 초과 {int(np.nansum(tm > 30))}명")
+    w(f"- 최소 글자 수 미달로 시간 초과한 참가자: {sum(1 for r in rows if to_num(r.get('overtime_seconds')) > 0)}명\n")
 
     # ---------------- 8. covariate balance
     w("## 8. 사전 특성 균형 점검\n")

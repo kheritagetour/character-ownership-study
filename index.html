@@ -105,6 +105,7 @@ const CONFIG = {
   SKETCH_INSTRUCTION: 'Use the attached rough hand-drawn sketch as the primary reference for the character\'s pose, silhouette, proportions and key shapes. Keep the sketch\'s composition, and turn it into a finished character illustration that follows this description: ',
   PROMPT_MIN_CHARS: 60,            // 프롬프트 길이 범위 (A/B 동일)
   PROMPT_MAX_CHARS: 400,
+  CONCEPT_SUGGESTED_SEC: 300,      // 컨셉 시트 권장 시간 (안내용, 강제 X) — 전체 30분 이내 목표
   SKETCH_SUGGESTED_SEC: 180,       // 스케치 권장 시간 (안내용, 강제 X)
   IMAGE: { width: 768, height: 1024 },  // 동일 출력 포맷/비율 (3:4)
   // 모든 프롬프트 뒤에 붙는 고정 스타일 (참가자에게 보이지 않음) — "Same AI model and visual style"
@@ -565,7 +566,7 @@ SCREENS.consent = function () {
   <div class="card">
     <p>본 연구는 <b>AI를 활용한 캐릭터 창작 과정에서 사람들이 어떤 경험을 하는지</b> 알아보기 위한 수업 연구입니다 (GCT573 인지와 정서, Team 2).</p>
     <ul>
-      <li>소요 시간: 약 25분</li>
+      <li>소요 시간: 약 25분 (최대 30분)</li>
       <li>진행: 사전 설문 → 캐릭터 컨셉 작성 및 스케치 → AI 이미지 생성 → 사후 설문</li>
       <li>입력하신 프롬프트, 생성된 이미지, 응답, 단계별 소요 시간이 기록됩니다.</li>
       <li>수집된 자료는 익명(참가자 번호)으로 처리되며 수업 연구 목적으로만 사용됩니다.</li>
@@ -640,6 +641,19 @@ SCREENS.world = function () {
   $('#next').onclick = () => go('concept');
 };
 
+/* 권장 시간 안내 (강제 아님): 경과 시간을 보여 주고 권장 시간을 넘기면 마무리를 부탁 */
+function softTimer(el, suggestedSec, t0 = Date.now()) {
+  const tick = () => {
+    const e = $(el); if (!e) return;
+    const s = Math.floor((Date.now() - t0) / 1000), fmt = x => `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`;
+    const over = s >= suggestedSec;
+    e.textContent = over ? `경과 ${fmt(s)} · 권장 시간이 지났어요. 마무리해 주세요` : `경과 ${fmt(s)} / 권장 ${Math.round(suggestedSec / 60)}분`;
+    e.classList.toggle('low', over);
+  };
+  clearInterval(timerHandle); tick(); timerHandle = setInterval(tick, 1000);
+  return t0;
+}
+
 /* ---------- 4. Concept sheet ---------- */
 SCREENS.concept = function () {
   const c = S.concept;
@@ -653,10 +667,13 @@ SCREENS.concept = function () {
     <div class="card concept-panel">${worldHtml(getWorld(), true)}</div>
     <div class="card">${groups.map(g => `<h2 style="margin:${g === groups[0] ? 0 : 22}px 0 0;font-size:17px">${g}</h2>${fields.filter(f => f.group === g).map(fieldHtml).join('')}`).join('')}
       <div class="err" id="err"></div>
-      <div class="actions"><button id="next">다음: 스케치</button></div>
+      <div class="actions" style="justify-content:space-between;align-items:center"><span class="timer" id="conceptTimer"></span><button id="next">다음: 스케치</button></div>
     </div>
   </div>`);
+  if (!S.conceptStartMs) S.conceptStartMs = Date.now();
+  softTimer('#conceptTimer', CONFIG.CONCEPT_SUGGESTED_SEC, S.conceptStartMs);
   $('#next').onclick = () => {
+    S.conceptSeconds = Math.round((Date.now() - S.conceptStartMs) / 1000);
     for (const f of fields) S.concept[f.key] = app.querySelector(`[name="${f.key}"]`).value.trim();
     const short = fields.filter(f => f.required && S.concept[f.key].length < 2);
     if (short.length) return $('#err').textContent = `작성하지 않은 칸이 있습니다: ${short.map(f => f.label).join(', ')} (짧게라도 괜찮습니다)`;
@@ -712,7 +729,7 @@ SCREENS.sketch = function () {
     im.src = url;
   };
   const t0 = Date.now();
-  timerHandle = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $('#sketchTimer').textContent = `경과 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
+  softTimer('#sketchTimer', CONFIG.SKETCH_SUGGESTED_SEC, t0);
   $('#next').onclick = () => {
     if (strokes < 1) return $('#err').textContent = '간단하게라도 스케치해 주세요.';
     S.sketch = { dataUrl: cv.toDataURL('image/jpeg', 0.85), strokes, source, seconds: Math.round((Date.now() - t0) / 1000) };
@@ -1036,7 +1053,7 @@ function flatten(s) {
     total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),
     pre_ai_tools: (s.pre?.ai_tools || []).join('|'),
-    concept_chars: Object.values(s.concept || {}).join('').length,
+    concept_chars: Object.values(s.concept || {}).join('').length, concept_seconds: s.conceptSeconds ?? null,
     sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,
     n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
     gen_seconds: g.genSeconds ?? null,

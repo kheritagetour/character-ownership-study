@@ -486,8 +486,16 @@ SCREENS.admin = async function () {
     const out = $('#testOut'); out.textContent = '생성 중…';
     const p = PROVIDERS[$('#provider').value]; const t0 = Date.now();
     try {
-      const img = await p.generate('a friendly lantern keeper girl with a glowing staff' + CONFIG.STYLE_SUFFIX, 42);   // 스케치 없이 기본 연결만 확인
-      out.innerHTML = `성공 (${((Date.now() - t0) / 1000).toFixed(1)}초)<br><img src="${img}" style="max-width:200px;margin-top:8px;border-radius:6px">`;
+      // 실험과 같은 방식(스케치 + 프롬프트)으로 확인: 간단한 막대 인형 스케치를 그려서 함께 보냄
+      const cv = document.createElement('canvas'); cv.width = 600; cv.height = 800;
+      const c = cv.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, 600, 800);
+      c.strokeStyle = '#111'; c.lineWidth = 6; c.lineCap = 'round';
+      c.beginPath(); c.arc(300, 170, 70, 0, Math.PI * 2);
+      c.moveTo(300, 240); c.lineTo(300, 520); c.moveTo(300, 320); c.lineTo(190, 420); c.moveTo(300, 320); c.lineTo(420, 260);
+      c.moveTo(420, 260); c.lineTo(420, 120); c.moveTo(300, 520); c.lineTo(220, 720); c.moveTo(300, 520); c.lineTo(380, 720); c.stroke();
+      const sketch = p.supportsSketch && CONFIG.USE_SKETCH ? cv.toDataURL('image/jpeg', 0.85) : null;
+      const img = await p.generate((sketch ? CONFIG.SKETCH_INSTRUCTION : '') + 'a friendly lantern keeper girl raising a glowing staff' + CONFIG.STYLE_SUFFIX, 42, sketch);
+      out.innerHTML = `성공 (${((Date.now() - t0) / 1000).toFixed(1)}초${sketch ? ', 스케치 포함' : ''})<br>${sketch ? `<img src="${sketch}" style="max-width:120px;margin:8px 8px 0 0;border-radius:6px;border:1px solid var(--line)">` : ''}<img src="${img}" style="max-width:200px;margin-top:8px;border-radius:6px">`;
     } catch (e) { out.innerHTML = `<span style="color:var(--warn)">실패: ${esc(e.message)}</span>`; }
   };
   $('#start').onclick = async () => {

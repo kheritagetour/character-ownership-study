@@ -23,9 +23,10 @@ def main():
     rnd = random.Random(args.seed)
 
     rows = []
-    conds = ["A", "B"] * (args.n // 2) + ["A"] * (args.n % 2)
-    rnd.shuffle(conds)
-    for i, c in enumerate(conds):
+    cells = [(c, wd) for c in "AB" for wd in ("academy", "city")]
+    plan = (cells * (args.n // 4 + 1))[:args.n]
+    rnd.shuffle(plan)
+    for i, (c, wd) in enumerate(plan):
         B = c == "B"
         ia_lat = rnd.gauss(4.2 + (0.7 if B else 0), 1.1)            # 의도 일치도
         po_lat = 2.0 + 0.45 * ia_lat + (args.effect * 0.5 if B else 0) + rnd.gauss(0, 0.8)
@@ -36,7 +37,7 @@ def main():
         r1 = rnd.randint(70, 260)
         r2 = min(400, r1 + rnd.randint(10, 120)) if revised else None
         r = {
-            "pid": f"P{i + 1:02d}", "session_id": f"P{i + 1:02d}_fake", "condition": c, "is_test": 0, "completed": 1,
+            "pid": f"P{i + 1:02d}", "session_id": f"P{i + 1:02d}_fake", "condition": c, "world": wd, "is_test": 0, "completed": 1,
             "provider": "fake", "model": "fake", "started_at": f"2026-11-20T10:{i:02d}:00Z",
             "completed_at": f"2026-11-20T10:{i:02d}:59Z", "total_minutes": round(rnd.uniform(20, 28), 1),
             "pre_ai_text_freq": rnd.randint(2, 5), "pre_ai_image_freq": rnd.randint(1, 4), "pre_ai_image_skill": rnd.randint(2, 6),

@@ -13,6 +13,7 @@ Team 2 — Creative involvement & psychological ownership
   - 공변량 : OLS  PO ~ condition + quality + effort  (N=12에서는 해석 주의)
   - 통제점검: 프롬프트 길이·작성 시간·수정량이 조건 간 비슷한지 (교수님 피드백: 시간/길이 교란)
             + OLS  PO ~ condition + final prompt length
+  - 세계관 : 조건 × 세계관 배정 균형, 세계관별 PO, OLS  PO ~ condition + world
   - 과정   : 생성 횟수, 단계별 길이·입력량·시간 기술통계
 의존성: numpy, scipy (pandas/statsmodels 불필요)
 """
@@ -359,6 +360,29 @@ def main():
         for nm, bb, se, t, p in coefs:
             w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
     w("")
+
+    # ---------------- 6c. world (stimulus) check
+    worlds = sorted({r.get("world") or "NA" for r in rows})
+    if len(worlds) > 1:
+        w("## 6c. 세계관(자극) 점검\n")
+        w("| | " + " | ".join(worlds) + " |\n|---|" + "---|" * len(worlds))
+        for g in ["A", "B"]:
+            w(f"| {g} | " + " | ".join(str(sum(1 for r in rows if r['condition'] == g and (r.get('world') or 'NA') == wd)) for wd in worlds) + " |")
+        w("")
+        for wd in worlds:
+            for g in ["A", "B"]:
+                y = col([r for r in rows if (r.get("world") or "NA") == wd and r["condition"] == g], "PO_mean")
+                if len(y):
+                    w(f"- {wd} · {g}: PO M = {np.nanmean(y):.2f} (n={len(y)})")
+        wv = np.array([1.0 if (r.get("world") or "NA") == worlds[1] else 0.0 for r in rows])
+        res = ols(po, np.column_stack([one, b, wv]), ["Intercept", "Condition (B=1)", f"World ({worlds[1]}=1)"])
+        if res:
+            coefs, r2, adj, n, dof = res
+            w(f"\n**PO ~ Condition + World** — R² = {r2:.2f}, n = {n}, df = {dof}\n")
+            w("| term | b | SE | t | p |\n|---|---|---|---|---|")
+            for nm, bb, se, t, p in coefs:
+                w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
+        w("\n> 조건 효과가 세계관과 무관하게 같은 방향인지 확인용. 셀당 3명이라 상호작용 검정은 하지 않음.\n")
 
     # ---------------- 7. process
     w("## 7. 과정 기록 (기술통계)\n")

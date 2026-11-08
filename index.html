@@ -115,17 +115,41 @@ const CONFIG = {
   GEN_TIMEOUT_MS: 120000,
 };
 
-const WORLD = {
-  title: '등불의 군도 (The Lantern Archipelago)',
-  text:
-`하늘 위에 떠 있는 수십 개의 작은 섬들이 밧줄다리와 소형 비행선으로 이어진 세계입니다.
-이곳은 밤이 하루의 절반 이상을 차지하기 때문에, 사람들은 빛을 담아두는 '등불'에 의지해 살아갑니다.
-섬마다 등불을 지키는 등불지기, 섬 사이를 오가며 물건을 파는 바람상인, 구름 속에서 빛나는 물고기를 잡는 구름어부 등 다양한 사람들이 살고 있습니다.
-
-최근, 가장자리 섬부터 등불이 하나씩 이유 없이 꺼지는 사건이 일어나고 있습니다.`,
-  task: '이 세계를 배경으로 하는 인터랙티브 스토리 또는 게임에 등장할 오리지널 캐릭터를 만들어 주세요.',
-  taskEn: 'Create an original character for an interactive story or game.',
+// 세계관 2개 — 참가자마다 하나를 무작위 배정 (조건 × 세계관 균형, 자극 일반화용)
+const WORLDS = [
+  {
+    id: 'academy', short: '마법학교',
+    title: '별빛 마법학교',
+    summary: '구름 위 산꼭대기에 있는 마법학교',
+    text:
+`구름 위 산꼭대기에 있는 마법학교입니다. 입학 시험에 통과한 학생들이 기숙사에서 함께 지내며 물약 만들기, 마법 생물 돌보기, 별자리 마법 같은 수업을 듣습니다.
+학교 안에는 끝이 보이지 않는 도서관, 마법 생물이 사는 온실, 학생들이 모이는 식당과 매점이 있습니다.`,
+    people: ['갓 입학한 신입생', '까다로운 물약 교수', '도서관 사서', '마법 생물 사육사', '매점 주인', '학생회장'],
+    hook: '최근 도서관에서 오래된 마법책 한 권이 사라진 뒤로, 학교 곳곳에서 이상한 일이 일어나고 있습니다.',
+  },
+  {
+    id: 'city', short: '미래 도시',
+    title: '2087 네온시티',
+    summary: '사람과 로봇이 함께 사는 근미래 대도시',
+    text:
+`2087년, 사람과 로봇이 함께 살아가는 대도시입니다. 하늘에는 드론 택시가 날아다니고, 거리에는 네온 간판이 가득합니다.
+도시 중심에는 거대 기업의 빌딩이 서 있고, 뒷골목에는 고장 난 로봇을 고치는 수리점과 작은 노점 시장이 있습니다.`,
+    people: ['로봇 수리공', '배달 라이더', '실력 좋은 해커', '드론 경찰', '노점 음식점 사장', '기업 연구원'],
+    hook: '최근 도시의 로봇들이 한밤중에 잠깐씩 동시에 멈추는 일이 계속되고 있습니다.',
+  },
+];
+const TASK = {
+  ko: '이 세계를 배경으로 하는 인터랙티브 스토리 또는 게임에 등장할 오리지널 캐릭터를 만들어 주세요.',
+  en: 'Create an original character for an interactive story or game.',
 };
+const getWorld = (id = S?.world) => WORLDS.find(w => w.id === id) || WORLDS[0];
+function worldHtml(w, compact) {
+  return `${compact ? `<b>${esc(w.title)}</b>` : ''}
+    <div class="world" style="${compact ? 'font-size:13.5px;margin-top:8px' : ''}">${esc(w.text)}</div>
+    <p style="margin:12px 0 4px"><b>이런 인물들이 살고 있어요</b></p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${w.people.map(p => `<span class="pill">${esc(p)}</span>`).join('')}</div>
+    <p style="margin:12px 0 0"><b>요즘 이 세계에서는…</b> ${esc(w.hook)}</p>`;
+}
 
 /* =====================================================================
  * 측정 도구 (PDF Appendix A1–A5)
@@ -212,17 +236,19 @@ const LS = {
 function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function makeAssignment(n, seed) {
   const rnd = mulberry32(seed);
-  // 4명 단위 블록(AABB 순열)으로 섞어 중도 종료 시에도 균형 유지
+  // 4명 단위 블록 = 조건(A/B) × 세계관(2개) 네 칸을 한 번씩 섞어 배치 → 중도 종료 시에도 균형 유지
+  const cells = ['A', 'B'].flatMap(c => WORLDS.map(w => [c, w.id]));
   const out = [];
   while (out.length < n) {
-    const block = ['A', 'A', 'B', 'B'];
+    const block = cells.slice();
     for (let i = block.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [block[i], block[j]] = [block[j], block[i]]; }
     out.push(...block);
   }
-  return out.slice(0, n).map((c, i) => ({ pid: 'P' + String(i + 1).padStart(2, '0'), condition: c }));
+  return out.slice(0, n).map(([c, w], i) => ({ pid: 'P' + String(i + 1).padStart(2, '0'), condition: c, world: w }));
 }
 function getAssignment() {
   let a = LS.get('assignment', null);
+  if (a && a.table.some(r => !r.world)) a = null;   // 세계관 없는 이전 배정표는 새로 만듦
   if (!a) { a = { seed: Math.floor(Math.random() * 1e9), table: null }; a.table = makeAssignment(CONFIG.N_TARGET, a.seed); LS.set('assignment', a); }
   return a;
 }
@@ -379,16 +405,16 @@ function bindSliders() {
 }
 const CONCEPT_FIELDS = [
   { group: '기본', key: 'name', label: '캐릭터 이름', ph: '예: 미라', required: true },
-  { group: '기본', key: 'role', label: '세계관 속 역할·직업', ph: '예: 가장자리 섬의 견습 등불지기', required: true },
+  { group: '기본', key: 'role', label: '세계관 속 역할·직업', ph: '예: 위의 인물 예시 중 하나, 또는 새로운 역할', required: true },
   { group: '기본', key: 'personality', label: '성격', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: true, area: true },
   { group: '외형', key: 'ageBody', label: '나이대·성별·체형', ph: '예: 10대 후반 소녀, 작고 마른 체격', required: true },
   { group: '외형', key: 'face', label: '얼굴·표정', ph: '예: 동그란 눈, 주근깨, 늘 살짝 졸린 표정', required: true },
   { group: '외형', key: 'hair', label: '헤어스타일·머리색', ph: '예: 은색 긴 머리를 한쪽으로 땋음', required: true },
   { group: '외형', key: 'outfit', label: '의상', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
-  { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 빛나는 물고기가 든 유리병, 열쇠 꾸러미', required: false },
+  { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 낡은 가죽 가방, 손목에 감은 붕대', required: false },
   { group: '외형', key: 'colors', label: '대표 색상', ph: '예: 남색, 은색, 따뜻한 주황 불빛', required: true },
-  { group: '핵심', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 등에 메고 다니는 커다란 등불', required: true, area: true },
-  { group: '이야기', key: 'backstory', label: '배경 이야기', ph: '어떤 사연이 있는지, 등불이 꺼지는 사건과 어떤 관계인지', required: true, area: true },
+  { group: '핵심', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 한쪽만 기계로 된 팔, 늘 들고 다니는 커다란 책', required: true, area: true },
+  { group: '이야기', key: 'backstory', label: '배경 이야기', ph: '어떤 사연이 있는지, 요즘 이 세계에서 일어나는 일과 어떤 관계인지', required: true, area: true },
 ];
 
 function conceptPanelHtml({ withSketch = true } = {}) {
@@ -427,6 +453,9 @@ SCREENS.admin = async function () {
       <div><label class="field">조건 <small>(배정표 기준 자동, 필요 시 수동 변경)</small></label>
         <select id="cond"><option value="A">A · Single-Prompt</option><option value="B">B · Iterative Prompting</option></select>
       </div>
+      <div><label class="field">세계관 <small>(배정표 기준 자동)</small></label>
+        <select id="world">${WORLDS.map(w => `<option value="${w.id}">${w.short} · ${w.title}</option>`).join('')}</select>
+      </div>
       <div><label class="field">이미지 생성 모델</label>
         <select id="provider">${Object.entries(PROVIDERS).map(([k, p]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${p.label}</option>`).join('')}</select>
       </div>
@@ -448,13 +477,13 @@ SCREENS.admin = async function () {
 
   <div class="card">
     <h2 style="margin-top:0">세션 목록 (${sessions.length})</h2>
-    <table><thead><tr><th>ID</th><th>조건</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>ID</th><th>조건</th><th>세계관</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
     ${sessions.map(s => { const f = flatten(s); return `<tr>
-      <td>${esc(s.pid)}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${s.condition}</td>
+      <td>${esc(s.pid)}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${s.condition}</td><td>${getWorld(s.world).short}</td>
       <td>${s.startedAt.slice(5, 16).replace('T', ' ')}</td>
       <td>${s.completedAt ? '완료' : '진행 중 (' + esc(STEP_LABEL[s.screen] || s.screen) + ')'}</td>
       <td>${f.n_generations}</td><td>${f.PO_mean ?? '—'}</td>
-      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">아직 없음</td></tr>'}
+      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">아직 없음</td></tr>'}
     </tbody></table>
     <div class="actions">
       <button class="secondary" id="expCsv">CSV 내보내기 (분석용)</button>
@@ -465,16 +494,16 @@ SCREENS.admin = async function () {
 
   <div class="card">
     <h2 style="margin-top:0">무선배정표 <span class="muted">(seed ${asg.seed})</span></h2>
-    <p class="muted">4명 단위 블록 무선배정. 남은 인원 기준 다음 배정: <b>${nextRow ? nextRow.pid + ' → ' + nextRow.condition : '모두 완료'}</b></p>
-    <table><tbody><tr>${asg.table.map(r => `<td style="text-align:center;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b></td>`).join('')}</tr></tbody></table>
+    <p class="muted">4명 단위 블록 무선배정 (조건 × 세계관 균형). 다음 배정: <b>${nextRow ? `${nextRow.pid} → ${nextRow.condition} · ${getWorld(nextRow.world).short}` : '모두 완료'}</b></p>
+    <div style="overflow-x:auto"><table><tbody><tr>${asg.table.map(r => `<td style="text-align:center;white-space:nowrap;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b><br><small>${getWorld(r.world).short}</small></td>`).join('')}</tr></tbody></table></div>
     <div class="actions"><button class="danger" id="reseed">배정표 다시 만들기</button></div>
   </div>`);
 
-  const pidSel = $('#pid'), condSel = $('#cond');
+  const pidSel = $('#pid'), condSel = $('#cond'), worldSel = $('#world');
   const syncCond = () => {
     const row = asg.table.find(r => r.pid === pidSel.value);
     $('#pidCustom').style.display = pidSel.value === '__custom' ? 'block' : 'none';
-    if (row) condSel.value = row.condition;
+    if (row) { condSel.value = row.condition; worldSel.value = row.world; }
   };
   pidSel.onchange = syncCond; syncCond();
   $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
@@ -494,7 +523,7 @@ SCREENS.admin = async function () {
       c.moveTo(300, 240); c.lineTo(300, 520); c.moveTo(300, 320); c.lineTo(190, 420); c.moveTo(300, 320); c.lineTo(420, 260);
       c.moveTo(420, 260); c.lineTo(420, 120); c.moveTo(300, 520); c.lineTo(220, 720); c.moveTo(300, 520); c.lineTo(380, 720); c.stroke();
       const sketch = p.supportsSketch && CONFIG.USE_SKETCH ? cv.toDataURL('image/jpeg', 0.85) : null;
-      const img = await p.generate((sketch ? CONFIG.SKETCH_INSTRUCTION : '') + 'a friendly lantern keeper girl raising a glowing staff' + CONFIG.STYLE_SUFFIX, 42, sketch);
+      const img = await p.generate((sketch ? CONFIG.SKETCH_INSTRUCTION : '') + 'a friendly young character raising one arm, holding a staff' + CONFIG.STYLE_SUFFIX, 42, sketch);
       out.innerHTML = `성공 (${((Date.now() - t0) / 1000).toFixed(1)}초${sketch ? ', 스케치 포함' : ''})<br>${sketch ? `<img src="${sketch}" style="max-width:120px;margin:8px 8px 0 0;border-radius:6px;border:1px solid var(--line)">` : ''}<img src="${img}" style="max-width:200px;margin-top:8px;border-radius:6px">`;
     } catch (e) { out.innerHTML = `<span style="color:var(--warn)">실패: ${esc(e.message)}</span>`; }
   };
@@ -503,18 +532,18 @@ SCREENS.admin = async function () {
     if (!pid) return alert('참가자 ID를 입력하세요.');
     if (done.has(pid) && !confirm(pid + '는 이미 완료된 ID입니다. 계속할까요?')) return;
     const row = asg.table.find(r => r.pid === pid);
-    if (row && row.condition !== condSel.value && !confirm(`배정표(${row.condition})와 다른 조건(${condSel.value})으로 시작합니다. 계속할까요?`)) return;
+    if (row && (row.condition !== condSel.value || row.world !== worldSel.value) && !confirm(`배정표(${row.condition} · ${getWorld(row.world).short})와 다르게 (${condSel.value} · ${getWorld(worldSel.value).short}) 시작합니다. 계속할까요?`)) return;
     LS.set('openaiKey', $('#okey')?.value.trim() || LS.get('openaiKey', ''));
     const prov = $('#provider').value;
     if (prov === 'openai' && !LS.get('openaiKey', '')) return alert('OpenAI API 키를 입력하세요. (테스트만 할 거라면 Mock을 선택)');
     S = {
-      id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, condition: condSel.value,
+      id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, condition: condSel.value, world: worldSel.value,
       isTest: $('#isTest').checked, provider: prov, model: PROVIDERS[prov].model(),
       config: CONFIG, userAgent: navigator.userAgent,
       startedAt: now(), completedAt: null, screen: null, screenTimes: {},
       pre: {}, concept: {}, sketch: {}, gen: { attempts: [], finalIdx: null, phaseStart: null, phaseEnd: null }, post: {}, events: [],
     };
-    log('session_start', { condition: S.condition, provider: prov });
+    log('session_start', { condition: S.condition, world: S.world, provider: prov });
     go('consent');
   };
   $('#expCsv').onclick = () => exportCsv(sessions);
@@ -603,8 +632,9 @@ SCREENS.pre = function () {
 /* ---------- 3. World ---------- */
 SCREENS.world = function () {
   h(`<h1>세계관 소개</h1><p class="lead">아래 세계관을 천천히 읽어 주세요. 이후 단계에서도 계속 참고할 수 있습니다.</p>
-  <div class="card"><h2 style="margin-top:0">${esc(WORLD.title)}</h2><div class="world">${esc(WORLD.text)}</div></div>
-  <div class="card"><b>과제</b><p style="margin:6px 0 0">${esc(WORLD.task)}</p><span class="en">${esc(WORLD.taskEn)}</span>
+  <div class="card"><h2 style="margin-top:0">${esc(getWorld().title)}</h2><p class="muted" style="margin-top:0">${esc(getWorld().summary)}</p>${worldHtml(getWorld(), false)}</div>
+  <div class="card"><b>과제</b><p style="margin:6px 0 0">${esc(TASK.ko)}</p><span class="en">${esc(TASK.en)}</span>
+  <p class="muted" style="margin-top:12px">위에 나온 인물 예시를 골라도 되고, 완전히 새로운 인물을 만들어도 됩니다.</p>
   <p class="muted" style="margin-top:12px">먼저 캐릭터 컨셉을 글로 정리하고 손 스케치를 한 다음, AI 이미지 생성 도구로 캐릭터를 완성하게 됩니다.</p></div>
   <div class="actions"><button id="next">캐릭터 구상 시작</button></div>`);
   $('#next').onclick = () => go('concept');
@@ -620,7 +650,7 @@ SCREENS.concept = function () {
     : `<input type="text" id="cf-${f.key}" name="${f.key}" placeholder="${esc(f.ph)}" value="${esc(c[f.key])}">`}`;
   h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">AI를 사용하기 전에, 만들고 싶은 캐릭터를 직접 구상해 적어 주세요. 이 내용은 이후 결과와 비교하는 데 사용됩니다. 짧은 단어나 구로 적어도 괜찮습니다.</p>
   <div class="split">
-    <div class="card concept-panel"><b>${esc(WORLD.title)}</b><div class="world" style="font-size:13.5px;margin-top:8px">${esc(WORLD.text)}</div></div>
+    <div class="card concept-panel">${worldHtml(getWorld(), true)}</div>
     <div class="card">${groups.map(g => `<h2 style="margin:${g === groups[0] ? 0 : 22}px 0 0;font-size:17px">${g}</h2>${fields.filter(f => f.group === g).map(fieldHtml).join('')}`).join('')}
       <div class="err" id="err"></div>
       <div class="actions"><button id="next">다음: 스케치</button></div>
@@ -763,7 +793,7 @@ SCREENS.gen = function () {
         ? '1차 결과에서 의도와 다른 부분이 드러나도록 프롬프트를 수정해 주세요. 스케치와 수정한 프롬프트로 다시 생성합니다.'
         : '컨셉 시트와 스케치를 바탕으로 캐릭터를 설명하는 프롬프트를 작성하세요. 스케치는 자동으로 함께 전달됩니다.'}</p>
       ${prevImg ? `<div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${prevImg.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>` : ''}
-      <textarea id="prompt" maxlength="${CONFIG.PROMPT_MAX_CHARS}" style="min-height:150px" placeholder="예: a young lantern keeper with silver braided hair, wearing a patched blue coat, carrying a glowing jar..."></textarea>
+      <textarea id="prompt" maxlength="${CONFIG.PROMPT_MAX_CHARS}" style="min-height:150px" placeholder="예: a teenage girl with short silver hair and freckles, wearing an oversized patched coat, carrying a big old book..."></textarea>
       <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">${revising ? '시간이 끝나면 자동으로 생성됩니다' : '시간이 끝나면 자동으로 생성됩니다 (일찍 끝낼 수 없음)'}</span></div>
       <div class="err" id="err"></div>
       ${revising ? '<div class="actions"><button class="secondary" id="cancelRev">수정하지 않고 1차 결과로 확정</button><button id="regen" disabled>수정한 프롬프트로 다시 생성</button></div>' : ''}`;
@@ -1001,7 +1031,7 @@ function flatten(s) {
   const fin = ok.find(a => a.idx === g.finalIdx);
   const sc = k => SCALES[k].items.map(([id]) => p[id]);
   const row = {
-    pid: s.pid, session_id: s.id, condition: s.condition, is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
+    pid: s.pid, session_id: s.id, condition: s.condition, world: s.world ?? '', is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
     provider: s.provider, model: s.model, started_at: s.startedAt, completed_at: s.completedAt,
     total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),

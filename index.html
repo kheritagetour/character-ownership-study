@@ -97,15 +97,17 @@
  * ===================================================================== */
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
-  N_TARGET: 12,                    // 블록 무선배정 표 크기 (A/B 각 절반)
-  ROUND_SEC: 180,                  // 1차 프롬프트 작성 고정 시간 (A/B 동일, 일찍 끝낼 수 없음)
-  REVISION_SEC: 180,               // B: 1차 결과를 본 뒤 수정할 수 있는 최대 시간 (선택, 일찍 생성 가능)
+  N_PER_STRATUM: 8,                // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 2)
+  // 프롬프트 작성 시간 총량을 A/B 동일하게 (교수님 피드백: 시간 교란 통제)
+  ROUND_SEC_A: 240,                // A: 단일 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
+  ROUND_SEC_B: 120,                // B: 1차 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
+  REVISION_SEC: 120,               // B: 1차 결과를 본 뒤 수정할 수 있는 최대 시간 (선택, 일찍 생성 가능) → B 총량 ≤ A
   USE_SKETCH: true,                // 손 스케치를 이미지 입력으로 함께 전달 (OpenAI·Mock만 지원)
   // 스케치를 함께 보낼 때 프롬프트 앞에 붙는 고정 지시문 (참가자에게 보이지 않음, A/B 동일)
   SKETCH_INSTRUCTION: 'Use the attached rough hand-drawn sketch as the primary reference for the character\'s pose, silhouette, proportions and key shapes. Keep the sketch\'s composition, and turn it into a finished character illustration that follows this description: ',
   PROMPT_MIN_CHARS: 60,            // 프롬프트 길이 범위 (A/B 동일)
   PROMPT_MAX_CHARS: 400,
-  CONCEPT_SUGGESTED_SEC: 300,      // 컨셉 시트 권장 시간 (안내용, 강제 X) — 전체 30분 이내 목표
+  CONCEPT_SUGGESTED_SEC: 420,      // 컨셉 시트 권장 시간 (안내용, 강제 X) — 전체 30분 이내 목표
   SKETCH_SUGGESTED_SEC: 180,       // 스케치 권장 시간 (안내용, 강제 X)
   IMAGE: { width: 768, height: 1024 },  // 동일 출력 포맷/비율 (3:4)
   // 모든 프롬프트 뒤에 붙는 고정 스타일 (참가자에게 보이지 않음) — "Same AI model and visual style"
@@ -115,6 +117,13 @@ const CONFIG = {
   OPENAI_QUALITY: 'medium',        // low | medium | high (화질↑ = 비용·시간↑)
   GEN_TIMEOUT_MS: 120000,
 };
+const roundSec = cond => cond === 'A' ? CONFIG.ROUND_SEC_A : CONFIG.ROUND_SEC_B;
+
+// 창작 경험 층 — 모집 시 다양하게 구성하고, 층마다 따로 블록 배정해 조건 간 경험 분포를 맞춤
+const STRATA = [
+  { id: 'E', label: '창작 경험 있음', desc: '그림·캐릭터·스토리 창작을 취미나 전공·업무로 해 본 적 있음' },
+  { id: 'N', label: '창작 경험 없음', desc: '관련 경험이 거의 없음' },
+];
 
 // 세계관 2개 — 참가자마다 하나를 무작위 배정 (조건 × 세계관 균형, 자극 일반화용)
 const WORLDS = [
@@ -237,22 +246,26 @@ const LS = {
 function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function makeAssignment(n, seed) {
   const rnd = mulberry32(seed);
-  // 4명 단위 블록 = 조건(A/B) × 세계관(2개) 네 칸을 한 번씩 섞어 배치 → 중도 종료 시에도 균형 유지
+  // 층(창작 경험 있음/없음)마다 4명 단위 블록 = 조건(A/B) × 세계관(2개) 네 칸을 한 번씩 섞어 배치
+  // → 두 층 모두에서 조건·세계관이 균형, 중도 종료 시에도 균형 유지. ID: E01… / N01…
   const cells = ['A', 'B'].flatMap(c => WORLDS.map(w => [c, w.id]));
-  const out = [];
-  while (out.length < n) {
-    const block = cells.slice();
-    for (let i = block.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [block[i], block[j]] = [block[j], block[i]]; }
-    out.push(...block);
-  }
-  return out.slice(0, n).map(([c, w], i) => ({ pid: 'P' + String(i + 1).padStart(2, '0'), condition: c, world: w }));
+  return STRATA.flatMap(st => {
+    const out = [];
+    while (out.length < n) {
+      const block = cells.slice();
+      for (let i = block.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [block[i], block[j]] = [block[j], block[i]]; }
+      out.push(...block);
+    }
+    return out.slice(0, n).map(([c, w], i) => ({ pid: st.id + String(i + 1).padStart(2, '0'), stratum: st.id, condition: c, world: w }));
+  });
 }
 function getAssignment() {
   let a = LS.get('assignment', null);
-  if (a && a.table.some(r => !r.world)) a = null;   // 세계관 없는 이전 배정표는 새로 만듦
-  if (!a) { a = { seed: Math.floor(Math.random() * 1e9), table: null }; a.table = makeAssignment(CONFIG.N_TARGET, a.seed); LS.set('assignment', a); }
+  if (a && a.table.some(r => !r.world || !r.stratum)) a = null;   // 이전 형식 배정표는 새로 만듦
+  if (!a) { a = { seed: Math.floor(Math.random() * 1e9), table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
   return a;
 }
+const getStratum = id => STRATA.find(s => s.id === id);
 
 /* =====================================================================
  * Image generation providers
@@ -407,20 +420,38 @@ function bindSliders() {
 const CONCEPT_FIELDS = [
   { group: '기본', key: 'name', label: '캐릭터 이름', ph: '예: 미라', required: true },
   { group: '기본', key: 'role', label: '세계관 속 역할·직업', ph: '예: 위의 인물 예시 중 하나, 또는 새로운 역할', required: true },
-  { group: '기본', key: 'personality', label: '성격', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: true, area: true },
-  { group: '외형', key: 'ageBody', label: '나이대·성별·체형', ph: '예: 10대 후반 소녀, 작고 마른 체격', required: true },
-  { group: '외형', key: 'face', label: '얼굴·표정', ph: '예: 동그란 눈, 주근깨, 늘 살짝 졸린 표정', required: true },
-  { group: '외형', key: 'hair', label: '헤어스타일·머리색', ph: '예: 은색 긴 머리를 한쪽으로 땋음', required: true },
-  { group: '외형', key: 'outfit', label: '의상', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
+  { group: '기본', key: 'ageGender', label: '나이대·성별', ph: '예: 10대 후반 여성', required: true },
+  { group: '외형', key: 'body', label: '키·체형', ph: '예: 작고 마른 체격, 구부정한 자세', required: true },
+  { group: '외형', key: 'faceShape', label: '얼굴형', ph: '예: 동그란 얼굴, 뾰족한 턱', required: true },
+  { group: '외형', key: 'eyes', label: '눈', ph: '예: 크고 처진 눈, 회색 눈동자, 늘 졸린 눈빛', required: true },
+  { group: '외형', key: 'hair', label: '머리카락', ph: '예: 은색 긴 머리를 한쪽으로 땋음', required: true },
+  { group: '외형', key: 'skin', label: '피부색', ph: '예: 창백한 피부, 볼에 주근깨', required: true },
+  { group: '외형', key: 'outfit', label: '옷', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
   { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 낡은 가죽 가방, 손목에 감은 붕대', required: false },
-  { group: '외형', key: 'colors', label: '대표 색상', ph: '예: 남색, 은색, 따뜻한 주황 불빛', required: true },
-  { group: '핵심', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 한쪽만 기계로 된 팔, 늘 들고 다니는 커다란 책', required: true, area: true },
-  { group: '이야기', key: 'backstory', label: '배경 이야기', ph: '어떤 사연이 있는지, 요즘 이 세계에서 일어나는 일과 어떤 관계인지', required: true, area: true },
+  { group: '외형', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 한쪽만 기계로 된 팔, 늘 들고 다니는 커다란 책', required: true, area: true },
+  { group: '성격', key: 'mbti', label: 'MBTI', type: 'mbti', required: true },
+  { group: '성격', key: 'traits', label: '성격 키워드 (정확히 3개)', type: 'traits', required: true },
+  { group: '성격', key: 'personality', label: '성격 설명', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: false, area: true },
+  { group: '배경', key: 'childhood', label: '어린 시절 이야기', ph: '어떻게 자랐는지, 기억에 남는 사건', required: true, area: true },
+  { group: '배경', key: 'relations', label: '가족·친구 이야기', ph: '가족, 친구, 라이벌 등 중요한 관계', required: true, area: true },
+  { group: '배경', key: 'backstory', label: '요즘 이야기', ph: '요즘 이 세계에서 일어나는 일과 어떤 관계인지', required: false, area: true },
 ];
+const MBTI_TYPES = ['ISTJ', 'ISFJ', 'INFJ', 'INTJ', 'ISTP', 'ISFP', 'INFP', 'INTP', 'ESTP', 'ESFP', 'ENFP', 'ENTP', 'ESTJ', 'ESFJ', 'ENFJ', 'ENTJ'];
+const TRAIT_GROUPS = [
+  ['긍정', '관계·배려형', ['다정한', '너그러운', '예의바른', '사심없는', '협동적인', '선한', '따뜻한']],
+  ['긍정', '신중·침착형', ['침착한', '신중한', '어른스러운', '중심이 잡힌', '조심성이 많은', '진중한']],
+  ['긍정', '도전·능동형', ['열정적인', '야심적인', '대범한', '능동적인', '도전적인', '독립적인', '대담한', '용기 있는']],
+  ['긍정', '명랑·자유형', ['낭창한', '순수한', '소박한', '넉살 좋은', '느긋한', '소탈한', '솔직한']],
+  ['부정', '소극·내성형', ['내성적인', '소극적인', '둔감한', '둔한', '회피적인']],
+  ['부정', '급함·신경질형', ['다혈질', '성급한', '성미가 급한', '화를 잘 내는', '안달하는']],
+  ['부정', '독단·냉담형', ['냉담한', '냉소적인', '냉정한', '독단적인', '도량이 좁은']],
+];
+const TRAIT_PICK = 3;
+const conceptValue = (c, f) => Array.isArray(c[f.key]) ? c[f.key].join(', ') : c[f.key];
 
 function conceptPanelHtml({ withSketch = true } = {}) {
   const c = S.concept;
-  const rows = CONCEPT_FIELDS.filter(f => c[f.key]).map(f => `<dt>${f.label}</dt><dd>${esc(c[f.key])}</dd>`);
+  const rows = CONCEPT_FIELDS.filter(f => conceptValue(c, f)).map(f => `<dt>${f.label.replace(/ \(.*\)$/, '')}</dt><dd>${esc(conceptValue(c, f))}</dd>`);
   if (c.looks) rows.splice(2, 0, `<dt>외형</dt><dd>${esc(c.looks)}</dd>`);   // 이전 버전 세션 호환
   return `<dl>${rows.join('')}</dl>${withSketch && S.sketch?.dataUrl ? `<dt style="font-weight:700;color:var(--navy);margin-top:8px">스케치</dt><img src="${S.sketch.dataUrl}" alt="스케치">` : ''}`;
 }
@@ -447,8 +478,11 @@ SCREENS.admin = async function () {
   <div class="card">
     <h2 style="margin-top:0">새 세션</h2>
     <div class="grid2">
+      <div><label class="field">창작 경험 <small>(모집 시 확인 — 이 층의 배정표에서 다음 ID가 선택됨)</small></label>
+        <select id="stratum">${STRATA.map(st => `<option value="${st.id}">${st.id} · ${st.label}</option>`).join('')}</select>
+      </div>
       <div><label class="field">참가자 ID</label>
-        <select id="pid">${asg.table.map(r => `<option value="${r.pid}" ${nextRow && r.pid === nextRow.pid ? 'selected' : ''}>${r.pid} ${done.has(r.pid) ? '(완료)' : ''}</option>`).join('')}<option value="__custom">직접 입력…</option></select>
+        <select id="pid"></select>
         <input type="text" id="pidCustom" placeholder="예: PILOT1" style="display:none;margin-top:6px">
       </div>
       <div><label class="field">조건 <small>(배정표 기준 자동, 필요 시 수동 변경)</small></label>
@@ -478,13 +512,13 @@ SCREENS.admin = async function () {
 
   <div class="card">
     <h2 style="margin-top:0">세션 목록 (${sessions.length})</h2>
-    <table><thead><tr><th>ID</th><th>조건</th><th>세계관</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>ID</th><th>경험</th><th>조건</th><th>세계관</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
     ${sessions.map(s => { const f = flatten(s); return `<tr>
-      <td>${esc(s.pid)}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${s.condition}</td><td>${getWorld(s.world).short}</td>
+      <td>${esc(s.pid)}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${esc(s.stratum || '—')}</td><td>${s.condition}</td><td>${getWorld(s.world).short}</td>
       <td>${s.startedAt.slice(5, 16).replace('T', ' ')}</td>
       <td>${s.completedAt ? '완료' : '진행 중 (' + esc(STEP_LABEL[s.screen] || s.screen) + ')'}</td>
       <td>${f.n_generations}</td><td>${f.PO_mean ?? '—'}</td>
-      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">아직 없음</td></tr>'}
+      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="muted">아직 없음</td></tr>'}
     </tbody></table>
     <div class="actions">
       <button class="secondary" id="expCsv">CSV 내보내기 (분석용)</button>
@@ -495,18 +529,26 @@ SCREENS.admin = async function () {
 
   <div class="card">
     <h2 style="margin-top:0">무선배정표 <span class="muted">(seed ${asg.seed})</span></h2>
-    <p class="muted">4명 단위 블록 무선배정 (조건 × 세계관 균형). 다음 배정: <b>${nextRow ? `${nextRow.pid} → ${nextRow.condition} · ${getWorld(nextRow.world).short}` : '모두 완료'}</b></p>
-    <div style="overflow-x:auto"><table><tbody><tr>${asg.table.map(r => `<td style="text-align:center;white-space:nowrap;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b><br><small>${getWorld(r.world).short}</small></td>`).join('')}</tr></tbody></table></div>
+    <p class="muted">창작 경험 층마다 4명 단위 블록 무선배정 (조건 × 세계관 균형).</p>
+    ${STRATA.map(st => { const rows = asg.table.filter(r => r.stratum === st.id), nx = rows.find(r => !done.has(r.pid)); return `
+      <p style="margin:12px 0 4px"><b>${st.id} · ${st.label}</b> <span class="muted">— 다음 배정: ${nx ? `${nx.pid} → ${nx.condition} · ${getWorld(nx.world).short}` : '모두 완료'}</span></p>
+      <div style="overflow-x:auto"><table><tbody><tr>${rows.map(r => `<td style="text-align:center;white-space:nowrap;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b><br><small>${getWorld(r.world).short}</small></td>`).join('')}</tr></tbody></table></div>`; }).join('')}
     <div class="actions"><button class="danger" id="reseed">배정표 다시 만들기</button></div>
   </div>`);
 
-  const pidSel = $('#pid'), condSel = $('#cond'), worldSel = $('#world');
+  const pidSel = $('#pid'), condSel = $('#cond'), worldSel = $('#world'), stSel = $('#stratum');
   const syncCond = () => {
     const row = asg.table.find(r => r.pid === pidSel.value);
     $('#pidCustom').style.display = pidSel.value === '__custom' ? 'block' : 'none';
     if (row) { condSel.value = row.condition; worldSel.value = row.world; }
   };
-  pidSel.onchange = syncCond; syncCond();
+  const fillPids = () => {
+    const rows = asg.table.filter(r => r.stratum === stSel.value), nx = rows.find(r => !done.has(r.pid));
+    pidSel.innerHTML = rows.map(r => `<option value="${r.pid}" ${nx && r.pid === nx.pid ? 'selected' : ''}>${r.pid} ${done.has(r.pid) ? '(완료)' : ''}</option>`).join('') + '<option value="__custom">직접 입력…</option>';
+    syncCond();
+  };
+  if (nextRow) stSel.value = nextRow.stratum;
+  stSel.onchange = fillPids; pidSel.onchange = syncCond; fillPids();
   $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
   $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
   $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
@@ -538,13 +580,13 @@ SCREENS.admin = async function () {
     const prov = $('#provider').value;
     if (prov === 'openai' && !LS.get('openaiKey', '')) return alert('OpenAI API 키를 입력하세요. (테스트만 할 거라면 Mock을 선택)');
     S = {
-      id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, condition: condSel.value, world: worldSel.value,
+      id: `${pid}_${Date.now()}`, studyId: CONFIG.STUDY_ID, pid, stratum: stSel.value, condition: condSel.value, world: worldSel.value,
       isTest: $('#isTest').checked, provider: prov, model: PROVIDERS[prov].model(),
       config: CONFIG, userAgent: navigator.userAgent,
       startedAt: now(), completedAt: null, screen: null, screenTimes: {},
       pre: {}, concept: {}, sketch: {}, gen: { attempts: [], finalIdx: null, phaseStart: null, phaseEnd: null }, post: {}, events: [],
     };
-    log('session_start', { condition: S.condition, world: S.world, provider: prov });
+    log('session_start', { stratum: S.stratum, condition: S.condition, world: S.world, provider: prov });
     go('consent');
   };
   $('#expCsv').onclick = () => exportCsv(sessions);
@@ -659,8 +701,13 @@ SCREENS.concept = function () {
   const c = S.concept;
   const fields = CONCEPT_FIELDS;
   const groups = [...new Set(fields.map(f => f.group))];
-  const fieldHtml = f => `<label class="field" for="cf-${f.key}">${f.label}${f.required ? '' : ' <small>(선택)</small>'}</label>${f.area
-    ? `<textarea id="cf-${f.key}" name="${f.key}" style="min-height:64px" placeholder="${esc(f.ph)}">${esc(c[f.key])}</textarea>`
+  const picked = new Set(c.traits || []);
+  const traitsHtml = () => `<p class="muted" style="margin:2px 0 6px">아래 중 내 캐릭터에게 어울린다고 생각되는 성격 키워드를 <b>${TRAIT_PICK}개</b> 골라 주세요. <span id="traitCount"></span></p>
+    ${TRAIT_GROUPS.map(([tone, name, words]) => `<div style="margin:6px 0"><small class="muted">${tone} · ${name}</small><div style="display:flex;flex-wrap:wrap;gap:4px 12px">${words.map(t => `<label style="white-space:nowrap"><input type="checkbox" name="trait" value="${esc(t)}" ${picked.has(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div>`).join('')}`;
+  const fieldHtml = f => `<label class="field" for="cf-${f.key}">${f.label}${f.required ? '' : ' <small>(선택)</small>'}</label>${
+    f.type === 'traits' ? traitsHtml()
+    : f.type === 'mbti' ? `<select id="cf-${f.key}" name="${f.key}"><option value="">선택</option>${MBTI_TYPES.map(t => `<option ${c.mbti === t ? 'selected' : ''}>${t}</option>`).join('')}<option value="모름" ${c.mbti === '모름' ? 'selected' : ''}>정하지 않음 / 모름</option></select>`
+    : f.area ? `<textarea id="cf-${f.key}" name="${f.key}" style="min-height:64px" placeholder="${esc(f.ph)}">${esc(c[f.key])}</textarea>`
     : `<input type="text" id="cf-${f.key}" name="${f.key}" placeholder="${esc(f.ph)}" value="${esc(c[f.key])}">`}`;
   h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">AI를 사용하기 전에, 만들고 싶은 캐릭터를 직접 구상해 적어 주세요. 이 내용은 이후 결과와 비교하는 데 사용됩니다. 짧은 단어나 구로 적어도 괜찮습니다.</p>
   <div class="split">
@@ -672,12 +719,21 @@ SCREENS.concept = function () {
   </div>`);
   if (!S.conceptStartMs) S.conceptStartMs = Date.now();
   softTimer('#conceptTimer', CONFIG.CONCEPT_SUGGESTED_SEC, S.conceptStartMs);
+  const traitBoxes = $$('input[name="trait"]');
+  const syncTraits = () => {
+    const n = traitBoxes.filter(b => b.checked).length;
+    traitBoxes.forEach(b => { b.disabled = !b.checked && n >= TRAIT_PICK; });
+    $('#traitCount').textContent = `(${n}/${TRAIT_PICK})`;
+  };
+  traitBoxes.forEach(b => b.addEventListener('change', syncTraits)); syncTraits();
   $('#next').onclick = () => {
     S.conceptSeconds = Math.round((Date.now() - S.conceptStartMs) / 1000);
-    for (const f of fields) S.concept[f.key] = app.querySelector(`[name="${f.key}"]`).value.trim();
-    const short = fields.filter(f => f.required && S.concept[f.key].length < 2);
+    for (const f of fields) {
+      S.concept[f.key] = f.type === 'traits' ? traitBoxes.filter(b => b.checked).map(b => b.value) : app.querySelector(`[name="${f.key}"]`).value.trim();
+    }
+    const short = fields.filter(f => f.required && (f.type === 'traits' ? S.concept.traits.length !== TRAIT_PICK : f.type === 'mbti' ? !S.concept.mbti : S.concept[f.key].length < 2));
     if (short.length) return $('#err').textContent = `작성하지 않은 칸이 있습니다: ${short.map(f => f.label).join(', ')} (짧게라도 괜찮습니다)`;
-    log('concept_submit', { chars: Object.fromEntries(fields.map(f => [f.key, S.concept[f.key].length])) });
+    log('concept_submit', { chars: Object.fromEntries(fields.map(f => [f.key, conceptValue(S.concept, f).length])) });
     go('sketch');
   };
 };
@@ -741,7 +797,7 @@ SCREENS.sketch = function () {
 /* ---------- 6. Generation intro (조건별 안내) ---------- */
 SCREENS.genIntro = function () {
   const A = S.condition === 'A';
-  const mins = CONFIG.ROUND_SEC / 60;
+  const mins = roundSec(S.condition) / 60;
   const engNote = S.provider === 'pollinations' ? '<li>이 도구는 <b>영어 프롬프트</b>를 더 정확하게 이해합니다. 가능하면 영어로 작성해 주세요.</li>' : '';
   h(`<h1>AI 캐릭터 생성 안내</h1>
   <div class="card">
@@ -755,7 +811,9 @@ SCREENS.genIntro = function () {
            <li>다시 생성했다면 <b>두 번째 이미지</b>가 최종 캐릭터가 됩니다.</li>`}
     </ol>
     <ul>
-      <li>프롬프트 작성은 <b>정확히 ${mins}분</b>입니다. 일찍 끝낼 수 없으니 남는 시간에는 프롬프트를 더 다듬어 주세요.</li>
+      <li>컨셉 시트를 그대로 옮기기보다, <b>최종 이미지에서 표현되기를 원하는 외형, 표정, 의상, 분위기, 핵심 특징</b>을 중심으로 작성해 주세요.</li>
+      <li>주어진 시간 동안 <b>가능한 한 충실하게</b> 작성해 주세요.</li>
+      <li>${A ? '' : '1차 '}프롬프트 작성은 <b>정확히 ${mins}분</b>입니다. 일찍 끝낼 수 없으니 남는 시간에는 프롬프트를 더 다듬어 주세요.</li>
       <li>프롬프트는 <b>${CONFIG.PROMPT_MIN_CHARS}자 이상 ${CONFIG.PROMPT_MAX_CHARS}자 이하</b>로 작성해 주세요.</li>
       ${engNote}
     </ul>
@@ -765,7 +823,7 @@ SCREENS.genIntro = function () {
 };
 
 /* ---------- 7. Generation ----------
- * 1차(A/B 동일): 프롬프트 작성 ROUND_SEC 고정 · 같은 길이 범위 → 스케치 + 프롬프트로 생성
+ * 작성 시간 총량 A/B 동일: A는 ROUND_SEC_A 고정 1회, B는 ROUND_SEC_B 고정 + 수정 최대 REVISION_SEC · 같은 길이 범위 → 스케치 + 프롬프트로 생성
  * B만: 1차 결과를 보고 선택적으로 프롬프트 수정(최대 REVISION_SEC) → 스케치 + 수정 프롬프트로 1회 재생성 → 2차가 최종 */
 function editDistance(a, b) {
   const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
@@ -796,7 +854,7 @@ SCREENS.gen = function () {
   /* --- 프롬프트 작성 (1차: 고정 시간 / 2차(B): 최대 시간, 일찍 생성 가능) --- */
   function stageWrite() {
     const r = G.round, revising = r === 2;
-    const limit = revising ? CONFIG.REVISION_SEC : CONFIG.ROUND_SEC;
+    const limit = revising ? CONFIG.REVISION_SEC : roundSec(S.condition);
     if (!G.rounds[r - 1]) {
       G.rounds[r - 1] = { n: r, startedAt: now(), startMs: Date.now(), inputEvents: 0, prompt: revising ? G.rounds[0].prompt : '' };
       log('round_start', { round: r });
@@ -808,7 +866,7 @@ SCREENS.gen = function () {
       <div class="gen-status"><span><b>${revising ? '프롬프트 수정' : '프롬프트 작성'}</b></span><span class="timer" id="timer"></span></div>
       <p class="muted" style="margin-top:0">${revising
         ? '1차 결과에서 의도와 다른 부분이 드러나도록 프롬프트를 수정해 주세요. 스케치와 수정한 프롬프트로 다시 생성합니다.'
-        : '컨셉 시트와 스케치를 바탕으로 캐릭터를 설명하는 프롬프트를 작성하세요. 스케치는 자동으로 함께 전달됩니다.'}</p>
+        : '최종 이미지에서 표현되기를 원하는 외형, 표정, 의상, 분위기, 핵심 특징을 중심으로 가능한 한 충실하게 작성해 주세요. 스케치는 자동으로 함께 전달됩니다.'}</p>
       ${prevImg ? `<div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${prevImg.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>` : ''}
       <textarea id="prompt" maxlength="${CONFIG.PROMPT_MAX_CHARS}" style="min-height:150px" placeholder="예: a teenage girl with short silver hair and freckles, wearing an oversized patched coat, carrying a big old book..."></textarea>
       <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">${revising ? '시간이 끝나면 자동으로 생성됩니다' : '시간이 끝나면 자동으로 생성됩니다 (일찍 끝낼 수 없음)'}</span></div>
@@ -994,6 +1052,11 @@ SCREENS.postCov = function () {
   const p = S.post;
   h(`<h1>사후 설문 (마지막)</h1>
   <div class="card">
+    ${likertGenericHtml('satisfaction', '최종 생성된 캐릭터 이미지에 전반적으로 만족한다.<span class="en">Overall, I am satisfied with the final character image.</span>', p.satisfaction, LIKERT_ANCHORS)}
+    <label class="field" style="margin-top:22px">최종 캐릭터를 만드는 데 나와 AI는 각각 얼마나 기여했다고 생각하십니까?<span class="en">How much did you and the AI each contribute to creating the final character?</span></label>
+    <p class="muted" style="margin:0">0 = 전적으로 내가 만듦 · 50 = 반반 · 100 = 전적으로 AI가 만듦</p>${sliderHtml('ai_contribution', p.ai_contribution)}
+  </div>
+  <div class="card">
     <label class="field">최종 캐릭터의 전반적인 품질을 어떻게 평가하십니까?<span class="en">How would you rate the overall quality of your final character?</span></label>
     <p class="muted" style="margin:0">0 = 매우 낮은 품질 · 100 = 매우 높은 품질</p>${sliderHtml('quality', p.quality)}
     <label class="field" style="margin-top:22px">이 캐릭터를 만드는 데 얼마나 노력을 기울였습니까?<span class="en">How much effort did you put into creating this character?</span></label>
@@ -1008,8 +1071,11 @@ SCREENS.postCov = function () {
   <div class="err" id="err"></div><div class="actions"><button id="next">제출</button></div>`);
   bindSliders();
   $('#next').onclick = async () => {
-    const q = $('[data-slider="quality"]'), e = $('[data-slider="effort"]');
-    if (!q.dataset.touched || !e.dataset.touched) return $('#err').textContent = '두 슬라이더를 모두 움직여 응답해 주세요.';
+    const q = $('[data-slider="quality"]'), e = $('[data-slider="effort"]'), ac = $('[data-slider="ai_contribution"]');
+    const sat = app.querySelector('input[name="satisfaction"]:checked');
+    if (!sat) return $('#err').textContent = '만족도 문항에 응답해 주세요.';
+    if (!q.dataset.touched || !e.dataset.touched || !ac.dataset.touched) return $('#err').textContent = '슬라이더를 모두 움직여 응답해 주세요.';
+    p.satisfaction = +sat.value; p.ai_contribution = +ac.querySelector('input').value;
     p.quality = +q.querySelector('input').value; p.effort = +e.querySelector('input').value;
     p.open_ownership = $('#open1').value.trim(); p.open_process = $('#open2').value.trim();
     S.completedAt = now();
@@ -1039,6 +1105,7 @@ function roundFields(rs) {
     round1_prompt: r1.prompt ?? '', round1_chars: r1.prompt?.length ?? null, round1_input_events: r1.inputEvents ?? null, round1_seconds: r1.writeSeconds ?? null,
     round2_prompt: r2.prompt ?? '', round2_chars: r2.prompt?.length ?? null, round2_input_events: r2.inputEvents ?? null, round2_seconds: r2.writeSeconds ?? null,
     round2_edit_distance: r1.prompt != null && r2.prompt != null && !r2.abandoned ? editDistance(r1.prompt, r2.prompt) : null,
+    write_seconds_total: rs.length ? rs.reduce((t, r) => t + (r.abandoned ? 0 : r.writeSeconds || 0), 0) : null,   // 실제로 생성에 쓰인 작성 시간 합
     overtime_seconds: rs.reduce((t, r) => t + (r.overtimeSec || 0), 0),
   };
 }
@@ -1048,12 +1115,13 @@ function flatten(s) {
   const fin = ok.find(a => a.idx === g.finalIdx);
   const sc = k => SCALES[k].items.map(([id]) => p[id]);
   const row = {
-    pid: s.pid, session_id: s.id, condition: s.condition, world: s.world ?? '', is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
+    pid: s.pid, session_id: s.id, stratum: s.stratum ?? '', condition: s.condition, world: s.world ?? '', is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
     provider: s.provider, model: s.model, started_at: s.startedAt, completed_at: s.completedAt,
     total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),
     pre_ai_tools: (s.pre?.ai_tools || []).join('|'),
     concept_chars: Object.values(s.concept || {}).join('').length, concept_seconds: s.conceptSeconds ?? null,
+    concept_mbti: s.concept?.mbti ?? '', concept_traits: (s.concept?.traits || []).join('|'),
     sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,
     n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
     gen_seconds: g.genSeconds ?? null,
@@ -1064,7 +1132,8 @@ function flatten(s) {
     final_prompt: fin?.prompt ?? '', final_prompt_chars: fin?.prompt.length ?? null,
   };
   for (const k of Object.keys(SCALES)) { SCALES[k].items.forEach(([id]) => row[id] = p[id] ?? null); row[k + '_mean'] = mean(sc(k)); }
-  Object.assign(row, { credit: p.credit ?? null, credit_other: p.credit_other ?? '', quality: p.quality ?? null, effort: p.effort ?? null,
+  Object.assign(row, { credit: p.credit ?? null, credit_other: p.credit_other ?? '',
+    satisfaction: p.satisfaction ?? null, ai_contribution: p.ai_contribution ?? null, quality: p.quality ?? null, effort: p.effort ?? null,
     open_ownership: p.open_ownership ?? '', open_process: p.open_process ?? '' });
   return row;
 }

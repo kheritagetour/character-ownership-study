@@ -10,10 +10,12 @@ Team 2 — Creative involvement & psychological ownership
   - H1     : PO  B > A  (Welch t, one-sided / two-sided) + Hedges g + exact permutation + Mann-Whitney
   - 2차    : AU  (Welch t), declared credit (Fisher exact 2x2: 'self' vs 기타, + 전체 표 exact permutation)
   - RQ2    : OLS  PO ~ IA + condition  (+ 상호작용 탐색)
-  - 공변량 : OLS  PO ~ condition + quality + effort  (N=12에서는 해석 주의)
+  - 공변량 : OLS  PO ~ condition + quality + effort  (N=16에서는 해석 주의)
   - 통제점검: 프롬프트 길이·작성 시간·수정량이 조건 간 비슷한지 (교수님 피드백: 시간/길이 교란)
             + OLS  PO ~ condition + final prompt length
   - 세계관 : 조건 × 세계관 배정 균형, 세계관별 PO, OLS  PO ~ condition + world
+  - 경험층 : 창작 경험(E/N) × 조건 균형, 층별 PO, OLS  PO ~ condition + stratum
+  - 추가   : 결과 만족도(1–7), 지각된 AI 기여도(0–100) 조건 비교 (양측)
   - 과정   : 생성 횟수, 단계별 길이·입력량·시간 기술통계
 의존성: numpy, scipy (pandas/statsmodels 불필요)
 """
@@ -281,6 +283,13 @@ def main():
     w(f"- PO–AU 상관 r = {np.corrcoef(po, au)[0, 1]:.2f}\n")
 
     # ---------------- 5. RQ2
+    w("### 4c. 결과 만족도 (1–7) · 지각된 AI 기여도 (0 = 전적으로 나 – 100 = 전적으로 AI), 양측\n")
+    for v in ["satisfaction", "ai_contribution"]:
+        if any(r.get(v) not in (None, "") for r in rows):
+            w(f"**{v}**\n")
+            w(fmt_cmp(compare(rows, v, alternative="two-sided"), one_sided=False))
+    w("")
+
     w("## 5. RQ2 (탐색) — 의도 일치도(IA)와 소유감(PO)\n")
     ia = col(rows, "IA_mean")
     b = (cond == "B").astype(float)
@@ -307,7 +316,7 @@ def main():
         for nm, bb, se, t, p in coefs:
             w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
         w("")
-    w("> 의도 일치도가 조건 효과를 설명(매개)하는지 판단하려면 N=12로는 부족함 — 방향성만 보고.\n")
+    w("> 의도 일치도가 조건 효과를 설명(매개)하는지 판단하려면 N=16으로는 부족함 — 방향성만 보고.\n")
     w(fmt_cmp(compare(rows, "IA_mean", alternative="two-sided"), one_sided=False))
 
     # ---------------- 6. covariates
@@ -331,9 +340,11 @@ def main():
 
     # ---------------- 6b. time/length confound check
     w("## 6b. 시간·길이 통제 점검 (교란 변인)\n")
-    w("1차 프롬프트 작성은 두 조건이 동일(고정 시간, 같은 글자 수 범위). 1차 지표가 조건 간 비슷해야 이후 차이를 '결과를 보고 수정할 기회'의 효과로 해석 가능.\n")
+    w("프롬프트 작성 시간 총량을 맞춤: A는 단일 프롬프트(고정 시간), B는 1차(고정, A의 절반) + 결과를 본 뒤 선택적 수정(최대 나머지 절반). "
+      "생성에 실제로 쓰인 작성 시간 합(write_seconds_total)과 최종 프롬프트 길이가 조건 간 비슷해야 차이를 '결과를 보고 수정할 기회'의 효과로 해석 가능. "
+      "B에서 수정을 안 하면 작성 시간이 A보다 짧아짐(조작에 포함되는 차이) → 아래 표와 공변량 모형으로 확인.\n")
     w("| 변수 | A M (SD) | B M (SD) | Welch p | g |\n|---|---|---|---|---|")
-    for v in ["round1_chars", "round1_input_events", "round1_seconds", "final_prompt_chars", "overtime_seconds"]:
+    for v in ["write_seconds_total", "final_prompt_chars", "round1_chars", "round1_input_events", "overtime_seconds"]:
         c = compare(rows, v, alternative="two-sided")
         if "error" not in c and not np.isnan(c["t"]):
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | {fmt_p(c['p_two'])} | {c['g']:.2f} |")
@@ -382,7 +393,31 @@ def main():
             w("| term | b | SE | t | p |\n|---|---|---|---|---|")
             for nm, bb, se, t, p in coefs:
                 w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
-        w("\n> 조건 효과가 세계관과 무관하게 같은 방향인지 확인용. 셀당 3명이라 상호작용 검정은 하지 않음.\n")
+        w("\n> 조건 효과가 세계관과 무관하게 같은 방향인지 확인용. 셀당 인원이 적어 상호작용 검정은 하지 않음.\n")
+
+    # ---------------- 6d. creative-experience stratum
+    strata = sorted({r.get("stratum") or "NA" for r in rows})
+    if len(strata) > 1:
+        w("## 6d. 창작 경험 층 점검 (E = 있음, N = 없음)\n")
+        w("층마다 따로 블록 배정했으므로 층 × 조건 인원이 균형이어야 함.\n")
+        w("| | " + " | ".join(strata) + " |\n|---|" + "---|" * len(strata))
+        for g in ["A", "B"]:
+            w(f"| {g} | " + " | ".join(str(sum(1 for r in rows if r['condition'] == g and (r.get('stratum') or 'NA') == st)) for st in strata) + " |")
+        w("")
+        for st in strata:
+            for g in ["A", "B"]:
+                y = col([r for r in rows if (r.get("stratum") or "NA") == st and r["condition"] == g], "PO_mean")
+                if len(y):
+                    w(f"- {st} · {g}: PO M = {np.nanmean(y):.2f} (n={len(y)})")
+        sv = np.array([1.0 if (r.get("stratum") or "NA") == "E" else 0.0 for r in rows])
+        res = ols(po, np.column_stack([one, b, sv]), ["Intercept", "Condition (B=1)", "Stratum (경험 있음=1)"])
+        if res:
+            coefs, r2, adj, n, dof = res
+            w(f"\n**PO ~ Condition + Stratum** — R² = {r2:.2f}, n = {n}, df = {dof}\n")
+            w("| term | b | SE | t | p |\n|---|---|---|---|---|")
+            for nm, bb, se, t, p in coefs:
+                w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
+        w("\n> 경험 유무에 따라 조건 효과 방향이 같은지 기술적으로만 확인 (셀당 인원이 적어 상호작용 검정은 하지 않음).\n")
 
     # ---------------- 7. process
     w("## 7. 과정 기록 (기술통계)\n")
@@ -405,7 +440,7 @@ def main():
         c = compare(rows, v, alternative="two-sided")
         if "error" not in c:
             w(f"| {v} | {c['mA']:.2f} | {c['mB']:.2f} | {fmt_p(c['p_two'])} |")
-    w("\n> n=6/조건에서 80% 검정력(α=.05, 단측)을 가지려면 d ≈ 1.54 이상 필요 (양측 ≈ 1.8; d = 0.8을 검출하려면 조건당 약 21명). p값보다 효과크기·CI 중심으로 해석할 것.")
+    w("\n> n=8/조건(N=16)에서 80% 검정력(α=.05, 단측)을 가지려면 d ≈ 1.31 이상 필요 (양측 ≈ 1.51; d = 0.8을 검출하려면 조건당 약 21명). p값보다 효과크기·CI 중심으로 해석할 것.")
 
     text = "\n".join(out)
     print(text)

@@ -98,10 +98,11 @@
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
   N_PER_STRATUM: 8,                // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 2)
-  // 프롬프트 작성 시간 총량을 A/B 동일하게 (교수님 피드백: 시간 교란 통제)
-  ROUND_SEC_A: 240,                // A: 단일 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
-  ROUND_SEC_B: 120,                // B: 1차 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
-  REVISION_SEC: 120,               // B: 1차 결과를 본 뒤 수정할 수 있는 최대 시간 (선택, 일찍 생성 가능) → B 총량 ≤ A
+  // 프롬프트 작성 시간 총량을 A/B 동일하게 (교수님 피드백: 시간 교란 통제, 세션 단위 시간 고정 — LACE·Joshi et al. 관행)
+  // ROUND_SEC_B + REVISION_SEC = ROUND_SEC_A 로 유지할 것
+  ROUND_SEC_A: 300,                // A: 단일 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
+  ROUND_SEC_B: 180,                // B: 1차 프롬프트 작성 고정 시간 (일찍 끝낼 수 없음)
+  REVISION_SEC: 120,               // B: 1차 결과를 본 뒤 수정 고정 시간 (일찍 끝낼 수 없음, 바꾸지 않으면 1차가 최종)
   USE_SKETCH: true,                // 손 스케치를 이미지 입력으로 함께 전달 (OpenAI·Mock만 지원)
   // 스케치를 함께 보낼 때 프롬프트 앞에 붙는 고정 지시문 (참가자에게 보이지 않음, A/B 동일)
   SKETCH_INSTRUCTION: 'Use the attached rough hand-drawn sketch as the primary reference for the character\'s pose, silhouette, proportions and key shapes. Keep the sketch\'s composition, and turn it into a finished character illustration that follows this description: ',
@@ -807,13 +808,13 @@ SCREENS.genIntro = function () {
       <li><b>프롬프트 작성 (${mins}분)</b> — 시간이 끝나면 스케치와 프롬프트로 이미지가 생성됩니다.</li>
       ${A
         ? '<li>생성된 이미지가 <b>최종 캐릭터</b>가 됩니다. 수정하거나 다시 생성할 수 없습니다.</li>'
-        : `<li>생성된 이미지를 보고, 의도와 다르면 <b>프롬프트를 수정해 한 번 더 생성</b>할 수 있습니다 (최대 ${CONFIG.REVISION_SEC / 60}분). 만족하면 그대로 확정해도 됩니다.</li>
-           <li>다시 생성했다면 <b>두 번째 이미지</b>가 최종 캐릭터가 됩니다.</li>`}
+        : `<li>생성된 이미지를 보고 <b>${CONFIG.REVISION_SEC / 60}분 동안 프롬프트를 수정</b>할 수 있습니다. 이 시간도 일찍 끝낼 수 없습니다.</li>
+           <li>시간이 끝났을 때 프롬프트를 바꿨다면 <b>한 번 더 생성</b>하고, 그 <b>두 번째 이미지</b>가 최종 캐릭터가 됩니다. 바꾸지 않았다면 첫 번째 이미지가 최종입니다.</li>`}
     </ol>
     <ul>
       <li>컨셉 시트를 그대로 옮기기보다, <b>최종 이미지에서 표현되기를 원하는 외형, 표정, 의상, 분위기, 핵심 특징</b>을 중심으로 작성해 주세요.</li>
       <li>주어진 시간 동안 <b>가능한 한 충실하게</b> 작성해 주세요.</li>
-      <li>${A ? '' : '1차 '}프롬프트 작성은 <b>정확히 ${mins}분</b>입니다. 일찍 끝낼 수 없으니 남는 시간에는 프롬프트를 더 다듬어 주세요.</li>
+      <li>${A ? '' : '1차 '}프롬프트 작성은 <b>정확히 ${mins}분</b>입니다. 일찍 끝낼 수 없으니 남는 시간에는 프롬프트를 더 다듬어 주세요.${A ? '' : ` (프롬프트 작성 시간은 1차 ${mins}분 + 수정 ${CONFIG.REVISION_SEC / 60}분)`}</li>
       <li>프롬프트는 <b>${CONFIG.PROMPT_MIN_CHARS}자 이상 ${CONFIG.PROMPT_MAX_CHARS}자 이하</b>로 작성해 주세요.</li>
       ${engNote}
     </ul>
@@ -823,8 +824,8 @@ SCREENS.genIntro = function () {
 };
 
 /* ---------- 7. Generation ----------
- * 작성 시간 총량 A/B 동일: A는 ROUND_SEC_A 고정 1회, B는 ROUND_SEC_B 고정 + 수정 최대 REVISION_SEC · 같은 길이 범위 → 스케치 + 프롬프트로 생성
- * B만: 1차 결과를 보고 선택적으로 프롬프트 수정(최대 REVISION_SEC) → 스케치 + 수정 프롬프트로 1회 재생성 → 2차가 최종 */
+ * 작성 시간 총량 A/B 동일: A는 ROUND_SEC_A 고정 1회, B는 ROUND_SEC_B 고정 + 수정 REVISION_SEC 고정 · 같은 길이 범위 → 스케치 + 프롬프트로 생성
+ * B만: 1차 결과를 보며 REVISION_SEC 동안 수정 → 프롬프트가 바뀌었으면 스케치 + 수정 프롬프트로 1회 재생성(2차가 최종), 그대로면 1차가 최종 */
 function editDistance(a, b) {
   const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
   let prev = Array.from({ length: n + 1 }, (_, j) => j);
@@ -865,13 +866,12 @@ SCREENS.gen = function () {
     card.innerHTML = `
       <div class="gen-status"><span><b>${revising ? '프롬프트 수정' : '프롬프트 작성'}</b></span><span class="timer" id="timer"></span></div>
       <p class="muted" style="margin-top:0">${revising
-        ? '1차 결과에서 의도와 다른 부분이 드러나도록 프롬프트를 수정해 주세요. 스케치와 수정한 프롬프트로 다시 생성합니다.'
+        ? '1차 결과를 보고, 의도와 다른 부분이 있으면 프롬프트를 수정해 주세요. 시간이 끝나면 수정한 프롬프트와 스케치로 다시 생성합니다. 프롬프트를 바꾸지 않으면 1차 결과가 최종 캐릭터가 됩니다.'
         : '최종 이미지에서 표현되기를 원하는 외형, 표정, 의상, 분위기, 핵심 특징을 중심으로 가능한 한 충실하게 작성해 주세요. 스케치는 자동으로 함께 전달됩니다.'}</p>
       ${prevImg ? `<div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${prevImg.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>` : ''}
       <textarea id="prompt" maxlength="${CONFIG.PROMPT_MAX_CHARS}" style="min-height:150px" placeholder="예: a teenage girl with short silver hair and freckles, wearing an oversized patched coat, carrying a big old book..."></textarea>
-      <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">${revising ? '시간이 끝나면 자동으로 생성됩니다' : '시간이 끝나면 자동으로 생성됩니다 (일찍 끝낼 수 없음)'}</span></div>
-      <div class="err" id="err"></div>
-      ${revising ? '<div class="actions"><button class="secondary" id="cancelRev">수정하지 않고 1차 결과로 확정</button><button id="regen" disabled>수정한 프롬프트로 다시 생성</button></div>' : ''}`;
+      <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">${revising ? '시간이 끝나면 자동으로 진행됩니다 (일찍 끝낼 수 없음)' : '시간이 끝나면 자동으로 생성됩니다 (일찍 끝낼 수 없음)'}</span></div>
+      <div class="err" id="err"></div>`;
     const ta = $('#prompt');
     ta.value = RD.draft ?? RD.prompt ?? '';
     const lenOk = () => ta.value.trim().length >= CONFIG.PROMPT_MIN_CHARS;
@@ -879,7 +879,6 @@ SCREENS.gen = function () {
     const upd = () => {
       const n = ta.value.trim().length;
       $('#chars').innerHTML = `<span style="color:${lenOk() ? 'var(--ok)' : 'var(--warn)'}">${n}자</span> / 최소 ${CONFIG.PROMPT_MIN_CHARS} · 최대 ${CONFIG.PROMPT_MAX_CHARS}`;
-      if (revising) $('#regen').disabled = !lenOk() || !changed();
     };
     ta.addEventListener('input', () => { RD.draft = ta.value; RD.inputEvents++; upd(); if (RD.overtime) tick(); });
     upd(); ta.focus();
@@ -889,13 +888,14 @@ SCREENS.gen = function () {
       const elapsed = Math.round((Date.now() - RD.startMs) / 1000);
       Object.assign(RD, { prompt: ta.value.trim(), endedAt: now(), writeSeconds: elapsed, overtimeSec: Math.max(0, elapsed - limit), endedBy: how });
       delete RD.draft;
+      if (revising) G.revised = true;
       log('round_end', { round: r, chars: RD.prompt.length, inputEvents: RD.inputEvents, how });
       G.stage = 'generating'; save(); stageGenerate(RD.prompt);
     }
     function tick() {
       const left = limit - Math.floor((Date.now() - RD.startMs) / 1000);
       const el = $('#timer'); if (!el) return;
-      el.textContent = left > 0 ? `${revising ? '최대 ' : ''}남은 시간 ${fmt(left)}` : '시간 종료';
+      el.textContent = left > 0 ? `남은 시간 ${fmt(left)}` : '시간 종료';
       el.classList.toggle('low', left <= 30);
       if (left <= 0) {
         if (revising && !changed()) return keepFirst('timeout_unchanged');
@@ -903,10 +903,6 @@ SCREENS.gen = function () {
         if (!RD.overtime) { RD.overtime = true; log('round_overtime', { round: r }); }
         $('#err').textContent = `최소 ${CONFIG.PROMPT_MIN_CHARS}자 이상 작성하면 자동으로 생성됩니다.`;
       }
-    }
-    if (revising) {
-      $('#regen').onclick = () => { if (lenOk() && changed()) finish('button'); };
-      $('#cancelRev').onclick = () => keepFirst('cancel');
     }
     clearInterval(timerHandle); tick(); timerHandle = setInterval(tick, 500);
   }
@@ -919,26 +915,6 @@ SCREENS.gen = function () {
     G.revised = false; G.finalIdx = okAttempts()[0].idx; G.stage = 'final';
     log('keep_first', { how });
     save(); stageFinal();
-  }
-
-  /* --- B: 1차 결과 확인 후 선택 --- */
-  function stageDecide() {
-    clearInterval(timerHandle);
-    const first = okAttempts()[0];
-    card.innerHTML = `
-      <h2 style="margin-top:0">1차 결과</h2>
-      <img class="final-img" src="${first.image}" alt="1차 결과">
-      <p style="text-align:center;margin-top:14px">이 이미지가 의도한 캐릭터와 다르다면 프롬프트를 수정해 <b>한 번 더</b> 생성할 수 있습니다.<br><span class="muted">다시 생성하면 두 번째 이미지가 최종 캐릭터가 됩니다.</span></p>
-      <div class="actions" style="justify-content:center">
-        <button class="secondary" id="keep">이대로 최종 확정</button>
-        <button id="revise">프롬프트 수정하기</button>
-      </div>`;
-    if (!G.decideStartMs) { G.decideStartMs = Date.now(); save(); }
-    $('#keep').onclick = () => { G.decideSeconds = Math.round((Date.now() - G.decideStartMs) / 1000); keepFirst('keep'); };
-    $('#revise').onclick = () => {
-      G.decideSeconds = Math.round((Date.now() - G.decideStartMs) / 1000);
-      G.revised = true; G.round = 2; G.stage = 'write'; log('choose_revise'); save(); stageWrite();
-    };
   }
 
   /* --- 생성 (스케치 + 프롬프트). 실패/쿨다운 시 자동 재시도, 횟수에 포함 안 됨 --- */
@@ -967,7 +943,7 @@ SCREENS.gen = function () {
       log('generate_response', { idx: att.idx, ok: att.ok, latencyMs: att.latencyMs, error: att.error });
       await save();
       if (att.ok) {
-        if (G.round === 1 && !A) { G.stage = 'decide'; await save(); return stageDecide(); }
+        if (G.round === 1 && !A) { G.round = 2; G.stage = 'write'; log('revision_start'); await save(); return stageWrite(); }   // B: 1차 결과를 보며 고정 시간 수정
         G.finalIdx = att.idx; G.stage = 'final'; await save(); return stageFinal();
       }
       $('#err').textContent = `생성 실패 (${att.error}). 자동으로 다시 시도합니다…`;
@@ -995,7 +971,7 @@ SCREENS.gen = function () {
   }
 
   if (G.stage === 'final') stageFinal();
-  else if (G.stage === 'decide') stageDecide();
+  else if (G.stage === 'decide') { G.round = 2; G.stage = 'write'; stageWrite(); }   // 이전 버전 세션 재개용
   else if (G.stage === 'generating') stageGenerate(G.rounds[G.round - 1].prompt);
   else stageWrite();
 };
@@ -1105,7 +1081,7 @@ function roundFields(rs) {
     round1_prompt: r1.prompt ?? '', round1_chars: r1.prompt?.length ?? null, round1_input_events: r1.inputEvents ?? null, round1_seconds: r1.writeSeconds ?? null,
     round2_prompt: r2.prompt ?? '', round2_chars: r2.prompt?.length ?? null, round2_input_events: r2.inputEvents ?? null, round2_seconds: r2.writeSeconds ?? null,
     round2_edit_distance: r1.prompt != null && r2.prompt != null && !r2.abandoned ? editDistance(r1.prompt, r2.prompt) : null,
-    write_seconds_total: rs.length ? rs.reduce((t, r) => t + (r.abandoned ? 0 : r.writeSeconds || 0), 0) : null,   // 실제로 생성에 쓰인 작성 시간 합
+    write_seconds_total: rs.length ? rs.reduce((t, r) => t + (r.writeSeconds || 0), 0) : null,   // 프롬프트 작성 화면에 머문 시간 합 (B는 수정하지 않아도 수정 시간 포함)
     overtime_seconds: rs.reduce((t, r) => t + (r.overtimeSec || 0), 0),
   };
 }
@@ -1126,7 +1102,6 @@ function flatten(s) {
     n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
     gen_seconds: g.genSeconds ?? null,
     b_revised: s.condition === 'B' && g.revised != null ? (g.revised ? 1 : 0) : null,
-    b_decide_seconds: g.decideSeconds ?? null,
     used_sketch: ok.length ? (ok.every(a => a.usedSketch) ? 1 : 0) : null,
     ...roundFields(g.rounds || []),
     final_prompt: fin?.prompt ?? '', final_prompt_chars: fin?.prompt.length ?? null,

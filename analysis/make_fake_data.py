@@ -38,8 +38,8 @@ def main():
         revised = B and rnd.random() < 0.8
         n_gen = 2 if revised else 1
         r1 = rnd.randint(60, 200) if B else rnd.randint(90, 320)
-        s1 = 120 if B else 240
-        s2 = rnd.randint(30, 120) if revised else 0
+        s1 = 180 if B else 300
+        s2 = 120 if B else 0
         r2 = min(400, r1 + rnd.randint(10, 120)) if revised else None
         r = {
             "pid": f"{st}{i % (args.n // 2) + 1:02d}", "session_id": f"{st}{i % (args.n // 2) + 1:02d}_fake", "stratum": st, "condition": c, "world": wd, "is_test": 0, "completed": 1,
@@ -51,7 +51,7 @@ def main():
             "concept_chars": rnd.randint(200, 600), "concept_seconds": rnd.randint(240, 480), "concept_mbti": rnd.choice(["INFP", "ESTJ", "모름"]), "concept_traits": "다정한|신중한|솔직한", "sketch_strokes": rnd.randint(15, 120), "sketch_source": "canvas",
             "sketch_seconds": rnd.randint(90, 240), "n_generations": n_gen, "n_failed_generations": 0,
             "gen_seconds": 200 + (rnd.randint(60, 200) if revised else 0) + rnd.randint(10, 40) * n_gen,
-            "b_revised": (1 if revised else 0) if B else "", "b_decide_seconds": rnd.randint(5, 40) if B else "", "used_sketch": 1,
+            "b_revised": (1 if revised else 0) if B else "", "used_sketch": 1,
             "round1_prompt": "fake", "round1_chars": r1, "round1_input_events": rnd.randint(60, 300), "round1_seconds": s1,
             "round2_prompt": "fake" if revised else "", "round2_chars": r2 if revised else "",
             "round2_input_events": rnd.randint(10, 150) if revised else "", "round2_seconds": s2 if revised else "",

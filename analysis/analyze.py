@@ -340,9 +340,9 @@ def main():
 
     # ---------------- 6b. time/length confound check
     w("## 6b. 시간·길이 통제 점검 (교란 변인)\n")
-    w("프롬프트 작성 시간 총량을 맞춤: A는 단일 프롬프트(고정 시간), B는 1차(고정, A의 절반) + 결과를 본 뒤 선택적 수정(최대 나머지 절반). "
-      "생성에 실제로 쓰인 작성 시간 합(write_seconds_total)과 최종 프롬프트 길이가 조건 간 비슷해야 차이를 '결과를 보고 수정할 기회'의 효과로 해석 가능. "
-      "B에서 수정을 안 하면 작성 시간이 A보다 짧아짐(조작에 포함되는 차이) → 아래 표와 공변량 모형으로 확인.\n")
+    w("프롬프트 작성 시간 총량을 맞춤 (세션 단위 시간 고정): A는 단일 프롬프트 고정 시간, B는 1차 고정 + 결과를 보며 수정 고정 시간(합 = A). "
+      "B는 수정하지 않아도 수정 시간을 보냄 → 작성 시간 합(write_seconds_total)이 조건 간 같아야 함. "
+      "최종 프롬프트 길이는 조건 간 다를 수 있어 공변량 모형으로 확인.\n")
     w("| 변수 | A M (SD) | B M (SD) | Welch p | g |\n|---|---|---|---|---|")
     for v in ["write_seconds_total", "final_prompt_chars", "round1_chars", "round1_input_events", "overtime_seconds"]:
         c = compare(rows, v, alternative="two-sided")
@@ -352,9 +352,9 @@ def main():
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | — | — |")
     bro = [r for r in rows if r["condition"] == "B"]
     rev = [r for r in bro if r.get("b_revised") == "1"]
-    w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 1차 결과를 보고 프롬프트를 수정해 재생성.")
+    w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 수정 시간에 프롬프트를 바꿔 재생성 (나머지는 1차가 최종).")
     if rev:
-        for v in ["round2_chars", "round2_edit_distance", "round2_input_events", "round2_seconds", "b_decide_seconds"]:
+        for v in ["round2_chars", "round2_edit_distance", "round2_input_events", "round2_seconds"]:
             y = col(rev, v); y = y[~np.isnan(y)]
             if len(y):
                 w(f"- {v}: M = {y.mean():.1f}" + (f", SD = {y.std(ddof=1):.1f}" if len(y) > 1 else "") + f" (n={len(y)})")

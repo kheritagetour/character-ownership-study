@@ -584,8 +584,15 @@ SCREENS.admin = async function () {
       c.moveTo(300, 240); c.lineTo(300, 520); c.moveTo(300, 320); c.lineTo(190, 420); c.moveTo(300, 320); c.lineTo(420, 260);
       c.moveTo(420, 260); c.lineTo(420, 120); c.moveTo(300, 520); c.lineTo(220, 720); c.moveTo(300, 520); c.lineTo(380, 720); c.stroke();
       const sketch = p.supportsSketch && CONFIG.USE_SKETCH ? cv.toDataURL('image/jpeg', 0.85) : null;
-      const img = await p.generate((sketch ? CONFIG.SKETCH_INSTRUCTION : '') + 'a friendly young character raising one arm, holding a staff' + CONFIG.STYLE_SUFFIX, 42, sketch);
-      out.innerHTML = `성공 (${((Date.now() - t0) / 1000).toFixed(1)}초${sketch ? ', 스케치 포함' : ''})<br>${sketch ? `<img src="${sketch}" style="max-width:120px;margin:8px 8px 0 0;border-radius:6px;border:1px solid var(--line)">` : ''}<img src="${img}" style="max-width:200px;margin-top:8px;border-radius:6px">`;
+      const base = '아래 캐릭터 설정을 반영해 캐릭터 일러스트를 그려 주세요.\n- 역할: 마법학교 신입생\n- 머리카락: 짧은 은발\n- 옷: 남색 망토\n- 핵심 특징: 한 손을 들고 나무 지팡이를 들고 있음';
+      const img = await p.generate((sketch ? CONFIG.SKETCH_INSTRUCTION : '') + base + CONFIG.STYLE_SUFFIX, 42, sketch);
+      const s1 = ((Date.now() - t0) / 1000).toFixed(1);
+      const thumb = src => `<img src="${src}" style="max-width:160px;margin:8px 8px 0 0;border-radius:6px;border:1px solid var(--line)">`;
+      out.innerHTML = `1단계 성공 (${s1}초${sketch ? ', 스케치 입력' : ''}) · 2단계(B 수정: 1차 이미지 입력) 생성 중…<br>${sketch ? thumb(sketch) : ''}${thumb(img)}`;
+      // B 수정 경로도 확인: 1차 결과 이미지를 입력으로 보내 요청 부분만 바꾸기
+      const t1 = Date.now();
+      const img2 = await p.generate(p.supportsSketch ? `${CONFIG.REVISION_INSTRUCTION}망토를 빨간색으로 바꿔 주세요\n\nOriginal character description:\n${base}${CONFIG.STYLE_SUFFIX}` : base + ', 빨간 망토' + CONFIG.STYLE_SUFFIX, 43, p.supportsSketch ? img : null);
+      out.innerHTML = `성공 — 1단계 ${s1}초${sketch ? ' (스케치 입력)' : ''} · 2단계 ${((Date.now() - t1) / 1000).toFixed(1)}초 (1차 이미지 입력, "망토를 빨간색으로")<br>${sketch ? thumb(sketch) : ''}${thumb(img)}${thumb(img2)}<br><span class="muted">확인: 2단계 이미지가 같은 캐릭터이고 망토만 빨갛게 바뀌었는지</span>`;
     } catch (e) { out.innerHTML = `<span style="color:var(--warn)">실패: ${esc(e.message)}</span>`; }
   };
   $('#start').onclick = async () => {

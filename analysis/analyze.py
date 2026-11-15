@@ -340,11 +340,11 @@ def main():
 
     # ---------------- 6b. time/length confound check
     w("## 6b. 시간·길이 통제 점검 (교란 변인)\n")
-    w("프롬프트 작성 시간 총량을 맞춤 (세션 단위 시간 고정): A는 단일 프롬프트 고정 시간, B는 1차 고정 + 결과를 보며 수정 고정 시간(합 = A). "
-      "B는 수정하지 않아도 수정 시간을 보냄 → 작성 시간 합(write_seconds_total)이 조건 간 같아야 함. "
-      "최종 프롬프트 길이는 조건 간 다를 수 있어 공변량 모형으로 확인.\n")
+    w("1차 이미지는 A/B 모두 컨셉 시트(고정 템플릿 프롬프트) + 스케치로 자동 생성 → 참가자 입력량은 컨셉 시트 분량(concept_chars)으로 비교. "
+      "1차 결과를 보는 시간을 고정: A는 살펴보기, B는 같은 시간 동안 수정 요청 작성 → image1_view_seconds가 조건 간 같아야 함. "
+      "컨셉 시트 분량은 공변량 모형으로도 확인.\n")
     w("| 변수 | A M (SD) | B M (SD) | Welch p | g |\n|---|---|---|---|---|")
-    for v in ["write_seconds_total", "final_prompt_chars", "round1_chars", "round1_input_events", "overtime_seconds"]:
+    for v in ["image1_view_seconds", "concept_chars", "concept_seconds", "auto_prompt_chars", "final_prompt_chars"]:
         c = compare(rows, v, alternative="two-sided")
         if "error" not in c and not np.isnan(c["t"]):
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | {fmt_p(c['p_two'])} | {c['g']:.2f} |")
@@ -352,21 +352,21 @@ def main():
             w(f"| {v} | {c['mA']:.1f} ({c['sdA']:.1f}) | {c['mB']:.1f} ({c['sdB']:.1f}) | — | — |")
     bro = [r for r in rows if r["condition"] == "B"]
     rev = [r for r in bro if r.get("b_revised") == "1"]
-    w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 수정 시간에 프롬프트를 바꿔 재생성 (나머지는 1차가 최종).")
+    w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 수정 요청을 적어 재생성 (나머지는 비워 두어 1차가 최종).")
     if rev:
-        for v in ["round2_chars", "round2_edit_distance", "round2_input_events", "round2_seconds"]:
+        for v in ["revision_chars", "revision_input_events", "revision_seconds"]:
             y = col(rev, v); y = y[~np.isnan(y)]
             if len(y):
                 w(f"- {v}: M = {y.mean():.1f}" + (f", SD = {y.std(ddof=1):.1f}" if len(y) > 1 else "") + f" (n={len(y)})")
         po_rev, po_keep = col(rev, "PO_mean"), col([r for r in bro if r.get("b_revised") == "0"], "PO_mean")
         if len(po_keep):
-            w(f"- B 내 PO: 수정함 M = {np.nanmean(po_rev):.2f} (n={len(po_rev)}) vs 그대로 확정 M = {np.nanmean(po_keep):.2f} (n={len(po_keep)}) — 자기선택이라 인과 해석 불가, 기술만")
+            w(f"- B 내 PO: 수정함 M = {np.nanmean(po_rev):.2f} (n={len(po_rev)}) vs 수정 안 함 M = {np.nanmean(po_keep):.2f} (n={len(po_keep)}) — 자기선택이라 인과 해석 불가, 기술만")
     w("")
-    L = col(rows, "final_prompt_chars")
-    res = ols(po, np.column_stack([one, b, (L - np.nanmean(L)) / 100]), ["Intercept", "Condition (B=1)", "Final prompt length (per 100 chars)"])
+    L = col(rows, "concept_chars")
+    res = ols(po, np.column_stack([one, b, (L - np.nanmean(L)) / 100]), ["Intercept", "Condition (B=1)", "Concept sheet length (per 100 chars)"])
     if res:
         coefs, r2, adj, n, dof = res
-        w(f"**PO ~ Condition + Final prompt length** — R² = {r2:.2f}, n = {n}, df = {dof}\n")
+        w(f"**PO ~ Condition + Concept sheet length** — R² = {r2:.2f}, n = {n}, df = {dof}\n")
         w("| term | b | SE | t | p |\n|---|---|---|---|---|")
         for nm, bb, se, t, p in coefs:
             w(f"| {nm} | {bb:.2f} | {se:.2f} | {t:.2f} | {fmt_p(p)} |")
@@ -431,7 +431,7 @@ def main():
         w(f"| {v} | {cell[0]} | {cell[1]} |")
     tm = col(rows, "total_minutes")
     w(f"\n- 총 소요 시간: 최대 {np.nanmax(tm):.1f}분, 30분 초과 {int(np.nansum(tm > 30))}명")
-    w(f"- 최소 글자 수 미달로 시간 초과한 참가자: {sum(1 for r in rows if to_num(r.get('overtime_seconds')) > 0)}명\n")
+    w("")
 
     # ---------------- 8. covariate balance
     w("## 8. 사전 특성 균형 점검\n")

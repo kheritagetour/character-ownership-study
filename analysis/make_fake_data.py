@@ -37,27 +37,24 @@ def main():
         au_lat = po_lat + rnd.gauss(0.3, 0.7)
         revised = B and rnd.random() < 0.8
         n_gen = 2 if revised else 1
-        r1 = rnd.randint(60, 200) if B else rnd.randint(90, 320)
-        s1 = 180 if B else 300
-        s2 = 120 if B else 0
-        r2 = min(400, r1 + rnd.randint(10, 120)) if revised else None
+        auto_chars = rnd.randint(250, 520)
+        req = rnd.randint(10, 120) if revised else 0
         r = {
             "pid": f"{st}{i % (args.n // 2) + 1:02d}", "session_id": f"{st}{i % (args.n // 2) + 1:02d}_fake", "stratum": st, "condition": c, "world": wd, "is_test": 0, "completed": 1,
             "provider": "fake", "model": "fake", "started_at": f"2026-11-20T10:{i:02d}:00Z",
-            "completed_at": f"2026-11-20T10:{i:02d}:59Z", "total_minutes": round(rnd.uniform(20, 28), 1),
+            "completed_at": f"2026-11-20T10:{i:02d}:59Z", "total_minutes": round(rnd.uniform(17, 25), 1),
             "pre_ai_text_freq": rnd.randint(2, 5), "pre_ai_image_freq": rnd.randint(1, 4), "pre_ai_image_skill": rnd.randint(2, 6),
             "pre_art_exp": rnd.randint(1, 3), "pre_char_exp": rnd.randint(1, 3), "pre_draw_skill": rnd.randint(1, 6),
             "pre_age": rnd.randint(21, 32), "pre_gender": rnd.choice(["여성", "남성"]), "pre_ai_tools": "ChatGPT",
-            "concept_chars": rnd.randint(200, 600), "concept_seconds": rnd.randint(240, 480), "concept_mbti": rnd.choice(["INFP", "ESTJ", "모름"]), "concept_traits": "다정한|신중한|솔직한", "sketch_strokes": rnd.randint(15, 120), "sketch_source": "canvas",
+            "concept_chars": rnd.randint(200, 600), "concept_seconds": rnd.randint(240, 480), "concept_mbti": rnd.choice(["INFP", "ESTJ", "모름"]), "concept_traits": "다정한|신중한", "sketch_strokes": rnd.randint(15, 120), "sketch_source": "canvas",
             "sketch_seconds": rnd.randint(90, 240), "n_generations": n_gen, "n_failed_generations": 0,
-            "gen_seconds": 200 + (rnd.randint(60, 200) if revised else 0) + rnd.randint(10, 40) * n_gen,
+            "gen_seconds": 120 + rnd.randint(20, 60) * n_gen,
             "b_revised": (1 if revised else 0) if B else "", "used_sketch": 1,
-            "round1_prompt": "fake", "round1_chars": r1, "round1_input_events": rnd.randint(60, 300), "round1_seconds": s1,
-            "round2_prompt": "fake" if revised else "", "round2_chars": r2 if revised else "",
-            "round2_input_events": rnd.randint(10, 150) if revised else "", "round2_seconds": s2 if revised else "",
-            "round2_edit_distance": rnd.randint(20, 160) if revised else "",
-            "write_seconds_total": s1 + s2,
-            "overtime_seconds": 0, "final_prompt": "fake", "final_prompt_chars": r2 if revised else r1,
+            "auto_prompt": "fake", "auto_prompt_chars": auto_chars,
+            "revision_request": "fake" if revised else "", "revision_chars": req if B else "",
+            "revision_input_events": rnd.randint(5, 120) if B else "", "revision_seconds": 120 if B else "",
+            "image1_view_seconds": 120,
+            "final_prompt": "fake", "final_prompt_chars": auto_chars + (req + 10 if revised else 0),
         }
         for k, lat, n in [("PO", po_lat, 5), ("IA", ia_lat, 3), ("AU", au_lat, 2), ("CC", cc_lat, 3)]:
             vals = [clip7(lat + rnd.gauss(0, 0.5)) for _ in range(n)]

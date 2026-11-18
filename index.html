@@ -730,6 +730,7 @@ SCREENS.pre = function () {
     ${freq('ai_image_freq', '이미지 생성형 AI (ChatGPT·Gemini 이미지 생성, Midjourney 등) 사용 빈도')}
     <label class="field">사용해 본 이미지 생성 도구 <small>(모두 선택)</small></label>
     <div>${['ChatGPT', 'Gemini (나노바나나)', 'Midjourney', 'Adobe Firefly', 'Microsoft Copilot', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    <input type="text" id="aiToolsOther" placeholder="기타: 사용해 본 도구 이름을 적어 주세요" value="${esc(p.ai_tools_other)}" style="display:${(p.ai_tools || []).includes('기타') ? 'block' : 'none'};margin-top:6px">
     ${likertGenericHtml('ai_image_skill', '이미지 생성 AI로 원하는 결과를 얻는 데 자신이 있다.', p.ai_image_skill, LIKERT_ANCHORS)}
   </div>
   <div class="card">
@@ -749,18 +750,22 @@ SCREENS.pre = function () {
   </div>
   <div class="err" id="err"></div>
   <div class="actions"><button id="next">다음</button></div>`);
+  const otherBox = app.querySelector('input[name="ai_tools"][value="기타"]');
+  otherBox.onchange = () => { $('#aiToolsOther').style.display = otherBox.checked ? 'block' : 'none'; if (otherBox.checked) $('#aiToolsOther').focus(); };
   $('#next').onclick = async () => {
     const f = n => app.querySelector(`[name="${n}"]`).value;
     const radio = n => app.querySelector(`input[name="${n}"]:checked`)?.value;
     Object.assign(S.pre, {
       ai_text_freq: +f('ai_text_freq') || null, ai_image_freq: +f('ai_image_freq') || null,
       ai_tools: $$('input[name="ai_tools"]:checked').map(x => x.value),
+      ai_tools_other: otherBox.checked ? $('#aiToolsOther').value.trim() : '',
       ai_image_skill: +radio('ai_image_skill') || null, art_exp: +f('art_exp') || null,
       char_exp: +f('char_exp') || null, draw_skill: +radio('draw_skill') || null,
       age: +f('age') || null, gender: f('gender'),
     });
     const miss = ['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age'].filter(k => !S.pre[k]);
     if (miss.length) return $('#err').textContent = '모든 필수 항목에 응답해 주세요.';
+    if (otherBox.checked && !S.pre.ai_tools_other) return $('#err').textContent = '\'기타\'에 체크하셨다면 사용해 본 도구 이름을 적어 주세요.';
     if (S.autoAssign && !S.pid) await autoAssign();
     go('world');
   };
@@ -1180,7 +1185,7 @@ function flatten(s) {
     provider: s.provider, model: s.model, started_at: s.startedAt, completed_at: s.completedAt,
     total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),
-    pre_ai_tools: (s.pre?.ai_tools || []).join('|'),
+    pre_ai_tools: (s.pre?.ai_tools || []).join('|'), pre_ai_tools_other: s.pre?.ai_tools_other ?? '',
     concept_chars: Object.values(s.concept || {}).join('').length, concept_seconds: s.conceptSeconds ?? null,
     concept_traits: (s.concept?.traits || []).join('|'),
     sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,

@@ -983,7 +983,9 @@ SCREENS.gen = function () {
     upd(); ta.focus();
     countdown(CONFIG.REVISION_SEC, RD.startMs, () => {
       Object.assign(RD, { request: ta.value.trim(), endedAt: now(), writeSeconds: Math.round((Date.now() - RD.startMs) / 1000) });
-      if (RD.request.length < CONFIG.REVISION_MIN_CHARS) {
+      // "없음/좋아요/그대로" 같은 답은 수정 요청이 아니라 1차 유지로 처리 (원문은 request에 그대로 남음)
+      const noChange = /^(없음|없어요|없습니다|없다|좋아요|좋음|좋습니다|만족|만족해요|만족합니다|괜찮아요|괜찮습니다|그대로|그대로 두기|수정 없음|x|X|-)[\s.!~ㅎ]*$/.test(RD.request);
+      if (RD.request.length < CONFIG.REVISION_MIN_CHARS || noChange) {
         Object.assign(RD, { endedBy: 'timeout_empty', abandoned: true });
         G.revised = false; log('keep_first', { how: 'timeout_empty' });
         return toFinal(img.idx);

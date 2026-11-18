@@ -387,7 +387,10 @@ const PROVIDERS = {
           body: JSON.stringify({ model, prompt: fullPrompt, size: '1024x1536', quality, n: 1 }),
         });
       }
-      const r = await withTimeout(req, CONFIG.GEN_TIMEOUT_MS);
+      // OpenAI의 오류 응답(키 오류 등)에는 CORS 헤더가 없어 브라우저가 내용을 못 읽고 'Failed to fetch'만 냄
+      const r = await withTimeout(req, CONFIG.GEN_TIMEOUT_MS).catch(e => {
+        throw new Error(e.message === 'timeout' ? 'timeout' : 'OpenAI가 요청을 거절했습니다 — 대부분 API 키가 틀렸거나 삭제된 키입니다. 키를 다시 붙여넣어 보세요. 키가 맞다면 결제(Billing)·조직 인증, 인터넷 연결을 확인하세요.');
+      });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error?.message || 'HTTP ' + r.status);
       return 'data:image/png;base64,' + j.data[0].b64_json;
@@ -562,7 +565,7 @@ SCREENS.admin = async function () {
     <div class="grid2">
       <div><label class="field">실험 PC 번호 <small>(팀원끼리 겹치지 않게)</small></label>
         <select id="station"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select></div>
-      <div><label class="field">OpenAI API 키 <small id="keyState">${LS.get('openaiKey', '') ? '✓ 저장됨' : '붙여넣으면 이 PC에 저장'}</small></label>
+      <div><label class="field">OpenAI API 키 <small id="keyState">${!LS.get('openaiKey', '') ? '붙여넣으면 이 PC에 저장' : /^sk-[\w-]{20,}$/.test(LS.get('openaiKey', '')) ? '✓ 저장됨' : '⚠ 저장된 값이 키 형식이 아닙니다 — 다시 붙여넣어 주세요'}</small></label>
         <input type="password" id="okey" value="${esc(LS.get('openaiKey', ''))}" placeholder="sk-..."></div>
     </div>
     <div class="actions" style="justify-content:flex-start"><button class="secondary" id="testGen">생성 연결 테스트</button></div>
@@ -646,7 +649,7 @@ SCREENS.admin = async function () {
   };
   stSel.onchange = fillPids; pidSel.onchange = syncCond; fillPids();
   $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
-  $('#okey').addEventListener('input', e => { LS.set('openaiKey', e.target.value.trim()); $('#keyState').textContent = e.target.value.trim() ? '✓ 저장됨' : '붙여넣으면 이 PC에 저장'; });
+  $('#okey').addEventListener('input', e => { LS.set('openaiKey', e.target.value.trim()); const v = e.target.value.trim(); $('#keyState').textContent = !v ? '붙여넣으면 이 PC에 저장' : /^sk-[\w-]{20,}$/.test(v) ? '✓ 저장됨' : '⚠ 키 형식이 아닙니다 (sk-로 시작하는 긴 값)'; });
   $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
   $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
   $('#station').onchange = e => {

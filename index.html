@@ -453,11 +453,9 @@ const CONCEPT_FIELDS = [
   { group: '외형', key: 'outfit', label: '옷', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
   { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 낡은 가죽 가방, 손목에 감은 붕대 (없으면 \'없음\')', required: true },
   { group: '외형', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 한쪽만 기계로 된 팔, 늘 들고 다니는 커다란 책', required: true, area: true },
-  { group: '성격', key: 'mbti', label: 'MBTI', type: 'mbti', required: true },
   { group: '성격', key: 'traits', label: '성격 키워드', type: 'traits', required: true },
   { group: '성격', key: 'personality', label: '성격 설명', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: true, area: true },
 ];
-const MBTI_TYPES = ['ISTJ', 'ISFJ', 'INFJ', 'INTJ', 'ISTP', 'ISFP', 'INFP', 'INTP', 'ESTP', 'ESFP', 'ENFP', 'ENTP', 'ESTJ', 'ESFJ', 'ENFJ', 'ENTJ'];
 const TRAIT_GROUPS = [
   ['긍정', '관계·배려형', ['다정한', '너그러운', '예의바른', '사심없는', '협동적인', '선한', '따뜻한']],
   ['긍정', '신중·침착형', ['침착한', '신중한', '어른스러운', '중심이 잡힌', '조심성이 많은', '진중한']],
@@ -479,7 +477,7 @@ function buildPrompt(c, w = getWorld()) {
     line('이름', 'name'), line('역할·직업', 'role'), line('나이·성별', 'ageGender'),
     line('키·체형', 'body'), line('얼굴형', 'faceShape'), line('눈', 'eyes'), line('머리카락', 'hair'), line('피부색', 'skin'),
     line('옷', 'outfit'), line('소지품·장신구', 'items'), line('핵심 시각 특징 (반드시 보이게)', 'keyFeature'),
-    line('성격 (표정·자세·분위기로 표현)', 'mbti', 'traits', 'personality'),
+    line('성격 (표정·자세·분위기로 표현)', 'traits', 'personality'),
   ].filter(Boolean).join('\n');
 }
 
@@ -729,9 +727,9 @@ SCREENS.pre = function () {
   <div class="card">
     <h2 style="margin-top:0">AI 사용 경험</h2>
     ${freq('ai_text_freq', '텍스트 생성형 AI (ChatGPT, Claude 등) 사용 빈도')}
-    ${freq('ai_image_freq', '이미지 생성형 AI (Midjourney, DALL·E, Firefly 등) 사용 빈도')}
+    ${freq('ai_image_freq', '이미지 생성형 AI (ChatGPT·Gemini 이미지 생성, Midjourney 등) 사용 빈도')}
     <label class="field">사용해 본 이미지 생성 도구 <small>(모두 선택)</small></label>
-    <div>${['Midjourney', 'DALL·E / ChatGPT 이미지', 'Stable Diffusion', 'Adobe Firefly', 'Gemini / Imagen', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    <div>${['ChatGPT', 'Gemini', 'Midjourney', 'Adobe Firefly', 'Microsoft Copilot', 'Canva', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
     ${likertGenericHtml('ai_image_skill', '이미지 생성 AI로 원하는 결과를 얻는 데 자신이 있다.', p.ai_image_skill, LIKERT_ANCHORS)}
   </div>
   <div class="card">
@@ -804,7 +802,6 @@ SCREENS.concept = function () {
     ${TRAIT_GROUPS.map(([tone, name, words]) => `<div style="margin:6px 0"><small class="muted">${tone} · ${name}</small><div style="display:flex;flex-wrap:wrap;gap:4px 12px">${words.map(t => `<label style="white-space:nowrap"><input type="checkbox" name="trait" value="${esc(t)}" ${picked.has(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div>`).join('')}`;
   const fieldHtml = f => `<label class="field" for="cf-${f.key}">${f.label}${f.required ? '' : ' <small>(선택)</small>'}</label>${
     f.type === 'traits' ? traitsHtml()
-    : f.type === 'mbti' ? `<select id="cf-${f.key}" name="${f.key}"><option value="">선택</option>${MBTI_TYPES.map(t => `<option ${c.mbti === t ? 'selected' : ''}>${t}</option>`).join('')}<option value="모름" ${c.mbti === '모름' ? 'selected' : ''}>정하지 않음 / 모름</option></select>`
     : f.area ? `<textarea id="cf-${f.key}" name="${f.key}" style="min-height:64px" placeholder="${esc(f.ph)}">${esc(c[f.key])}</textarea>`
     : `<input type="text" id="cf-${f.key}" name="${f.key}" placeholder="${esc(f.ph)}" value="${esc(c[f.key])}">`}`;
   h(`<h1>캐릭터 컨셉 시트</h1><p class="lead">이야기에 등장할 인물을 직접 구상해 적어 주세요. <b>AI는 여기 적은 내용과 스케치를 바탕으로 이미지를 만들기 때문에</b>, 최종 이미지에서 보이길 원하는 모습을 최대한 자세히 적을수록 좋습니다. 짧은 단어나 구로 적어도 괜찮습니다.</p>
@@ -825,7 +822,7 @@ SCREENS.concept = function () {
     for (const f of fields) {
       S.concept[f.key] = f.type === 'traits' ? traitBoxes.filter(b => b.checked).map(b => b.value) : app.querySelector(`[name="${f.key}"]`).value.trim();
     }
-    const short = fields.filter(f => f.required && (f.type === 'traits' ? !S.concept.traits.length : f.type === 'mbti' ? !S.concept.mbti : S.concept[f.key].length < 2));
+    const short = fields.filter(f => f.required && (f.type === 'traits' ? !S.concept.traits.length : S.concept[f.key].length < 2));
     if (short.length) return $('#err').textContent = `작성하지 않은 칸이 있습니다: ${short.map(f => f.label).join(', ')} (짧게라도 괜찮습니다)`;
     log('concept_submit', { chars: Object.fromEntries(fields.map(f => [f.key, conceptValue(S.concept, f).length])) });
     go('sketch');
@@ -834,7 +831,7 @@ SCREENS.concept = function () {
 
 /* ---------- 5. Hand sketch ---------- */
 SCREENS.sketch = function () {
-  h(`<h1>손 스케치</h1><p class="lead">컨셉 시트를 바탕으로 캐릭터를 간단히 스케치해 주세요. 잘 그릴 필요는 없습니다 — 형태와 핵심 특징만 표현되면 충분합니다. (권장 ${Math.round(CONFIG.SKETCH_SUGGESTED_SEC / 60)}분)</p>
+  h(`<h1>손 스케치</h1><p class="lead">컨셉 시트를 바탕으로 캐릭터를 스케치해 주세요. (권장 ${Math.round(CONFIG.SKETCH_SUGGESTED_SEC / 60)}분)</p>
   <div class="split">
     <div class="card concept-panel">${conceptPanelHtml({ withSketch: false })}</div>
     <div class="card">
@@ -1185,7 +1182,7 @@ function flatten(s) {
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),
     pre_ai_tools: (s.pre?.ai_tools || []).join('|'),
     concept_chars: Object.values(s.concept || {}).join('').length, concept_seconds: s.conceptSeconds ?? null,
-    concept_mbti: s.concept?.mbti ?? '', concept_traits: (s.concept?.traits || []).join('|'),
+    concept_traits: (s.concept?.traits || []).join('|'),
     sketch_strokes: s.sketch?.strokes ?? null, sketch_source: s.sketch?.source ?? null, sketch_seconds: s.sketch?.seconds ?? null,
     n_generations: ok.length, n_failed_generations: g.attempts.length - ok.length,
     gen_seconds: g.genSeconds ?? null,

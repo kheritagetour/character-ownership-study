@@ -97,8 +97,8 @@
  * ===================================================================== */
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
-  // 여러 PC에서 동시에 진행: PC마다 '실험 PC 번호'(1–9)를 정하고, 배정은 PC(=사이트)별 층화 블록 무선배정
-  // PC k의 배정표 시드 = ASSIGN_SEED × 10 + k (재현 가능). 참가자 번호 P{k}-01, P{k}-02… (PC끼리 겹치지 않음)
+  // 여러 PC 릴레이 진행: 모든 PC가 같은 시드의 배정표 하나를 공유하고, PC를 바꿀 때 이전 PC의 '인계 파일'을 가져와
+  // 번호(P01…)와 배정 칸을 이어받음. PC 번호는 누가 진행했는지 기록용 (CSV station 열)
   ASSIGN_SEED: 20261118,
   N_PER_STRATUM: 16,               // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 4). 목표는 층별 8명이지만, 모집이 한쪽으로 몰려도 배정표가 바닥나지 않도록 여유 있게 (블록 단위라 어디서 끊겨도 4명마다 균형)
   // 1차 이미지는 A/B 모두 컨셉 시트 + 스케치로 자동 생성 (참가자가 프롬프트를 따로 쓰지 않음 — 2차 파일럿 피드백)
@@ -271,19 +271,19 @@ function makeAssignment(n, seed) {
 function getAssignment() {
   let a = LS.get('assignment', null);
   if (a && a.table.some(r => !r.world || !r.stratum)) a = null;   // 이전 형식 배정표는 새로 만듦
-  const seed = CONFIG.ASSIGN_SEED * 10 + (getStation() || 0);
-  if (a && a.seed !== seed) a = null;   // PC 번호가 정해지거나 바뀌면 그 PC의 배정표로
+  const seed = CONFIG.ASSIGN_SEED;
+  if (a && a.seed !== seed) a = null;   // 모든 PC가 같은 배정표를 쓰도록 고정 시드
   if (a && a.table.length !== CONFIG.N_PER_STRATUM * STRATA.length) { a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }   // 크기 변경: 같은 시드로 늘림 (앞 칸 유지)
   if (!a) { a = { seed, table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
   return a;
 }
 const getStratum = id => STRATA.find(s => s.id === id);
-// 참가자 번호: 본실험 P{PC}-01, P{PC}-02… (그 PC에서 층과 무관하게 순서대로) / 테스트 T{PC}-01…
+// 참가자 번호: 본실험 P01, P02… (모든 PC 통틀어 순서대로, 인계 파일로 이어받음) / 테스트 T01…
 // 배정표의 E01·N01은 '배정 칸'(slot)이고, 세션에는 slot으로 따로 기록
 const slotOf = s => s.slot || s.pid;
 const getStation = () => { const k = +LS.get('station', 0); return k >= 1 && k <= 9 ? k : null; };
 function nextPid(sessions, test) {
-  const pre = (test ? 'T' : 'P') + getStation() + '-', re = new RegExp('^' + pre + '(\\d+)$');
+  const pre = test ? 'T' : 'P', re = new RegExp('^' + pre + '(\\d+)$');
   const nums = sessions.filter(s => !!s.isTest === test).map(s => +((s.pid || '').match(re)?.[1] || 0));
   return pre + String(Math.max(0, ...nums) + 1).padStart(2, '0');
 }
@@ -516,7 +516,9 @@ SCREENS.admin = async function () {
 
   <div class="card" style="${getStation() ? '' : 'border-color:var(--warn)'}">
     <h2 style="margin-top:0">실험 PC 번호 ${getStation() ? `<span class="pill">PC ${getStation()}</span>` : ''}</h2>
-    <p class="muted" style="margin-top:0">PC(크롬 프로필)마다 겹치지 않는 번호를 한 번 정해 주세요. 참가자 번호가 <b>P{PC번호}-01</b>부터 붙고, 배정표도 PC별로 따로 만들어집니다. <b>데이터 수집 시작 후에는 바꾸지 마세요.</b></p>
+    <p class="muted" style="margin-top:0">PC(크롬 프로필)마다 겹치지 않는 번호를 한 번 정해 주세요 (누가 진행했는지 기록용).</p>
+    <p style="margin:8px 0"><b>PC를 바꿔 진행할 때:</b> 이전 PC에서 「인계 파일 내보내기」 → 이 PC에서 「인계 파일 가져오기」를 <b>먼저</b> 하세요. 그래야 참가자 번호와 배정이 이어집니다.
+      <br><span class="muted">이 PC가 아는 마지막 본실험: ${(() => { const m = sessions.filter(s => !s.isTest && s.pid).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).pop(); return m ? `<b>${esc(m.pid)}</b> (${m.startedAt.slice(5, 16).replace('T', ' ')}${m.station ? ', PC ' + m.station : ''})` : '없음'; })()} → 다음 번호 <b>${nextPid(sessions, false)}</b></span></p>
     <select id="station" style="width:auto"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select>
   </div>
 
@@ -560,16 +562,17 @@ SCREENS.admin = async function () {
     <h2 style="margin-top:0">세션 목록 (${sessions.length})</h2>
     <table><thead><tr><th>ID</th><th>경험</th><th>조건</th><th>세계관</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
     ${sessions.map(s => { const f = flatten(s); return `<tr>
-      <td>${esc(s.pid || '(배정 전)')}${s.slot ? ` <small class="muted">${esc(s.slot)}</small>` : ''}${s.isTest ? ' <span class="pill">test</span>' : ''}</td><td>${esc(s.stratum || '—')}</td><td>${s.condition || '—'}</td><td>${s.world ? getWorld(s.world).short : '—'}</td>
+      <td>${esc(s.pid || '(배정 전)')}${s.slot ? ` <small class="muted">${esc(s.slot)}</small>` : ''}${s.isTest ? ' <span class="pill">test</span>' : ''}${s.station ? ` <small class="muted">PC${s.station}</small>` : ''}${s.handoff ? ' <span class="pill">인계</span>' : ''}</td><td>${esc(s.stratum || '—')}</td><td>${s.condition || '—'}</td><td>${s.world ? getWorld(s.world).short : '—'}</td>
       <td>${s.startedAt.slice(5, 16).replace('T', ' ')}</td>
       <td>${s.completedAt ? '완료' : '진행 중 (' + esc(STEP_LABEL[s.screen] || s.screen) + ')'}</td>
       <td>${f.n_generations}</td><td>${f.PO_mean ?? '—'}</td>
-      <td style="white-space:nowrap">${s.completedAt ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="muted">아직 없음</td></tr>'}
+      <td style="white-space:nowrap">${s.completedAt || s.handoff ? '' : `<button class="secondary" data-resume="${s.id}" style="padding:4px 10px">재개</button> `}<button class="secondary" data-dl="${s.id}" style="padding:4px 10px">JSON</button> <button class="danger" data-del="${s.id}" style="padding:4px 10px">삭제</button></td></tr>`; }).join('') || '<tr><td colspan="9" class="muted">아직 없음</td></tr>'}
     </tbody></table>
     <div class="actions">
       <button class="secondary" id="expCsv">CSV 내보내기 (분석용)</button>
       <button class="secondary" id="expJson">전체 JSON 내보내기 (이미지 포함)</button>
-      <label class="secondary" style="display:inline-flex;align-items:center;border:1px solid var(--navy);border-radius:8px;padding:10px 18px;cursor:pointer;color:var(--navy)">JSON 가져오기<input type="file" id="impJson" accept=".json" style="display:none"></label>
+      <button id="expHandoff">인계 파일 내보내기 (다음 PC로)</button>
+      <label class="secondary" style="display:inline-flex;align-items:center;border:1px solid var(--navy);border-radius:8px;padding:10px 18px;cursor:pointer;color:var(--navy)">인계 파일 / JSON 가져오기<input type="file" id="impJson" accept=".json" style="display:none"></label>
     </div>
   </div>
 
@@ -603,7 +606,7 @@ SCREENS.admin = async function () {
   $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
   $('#station').onchange = e => {
     const k = +e.target.value || 0, cur = getStation();
-    if (cur && sessions.some(s => !s.isTest && s.station === cur) && !confirm('이 PC에 이미 본실험 데이터가 있습니다. 번호를 바꾸면 참가자 번호와 배정표가 달라집니다. 계속할까요?')) { e.target.value = cur; return; }
+    if (cur && sessions.some(s => !s.isTest && s.station === cur) && !confirm('이 PC 번호로 진행한 본실험 데이터가 있습니다. 바꿀까요?')) { e.target.value = cur; return; }
     LS.set('station', k); SCREENS.admin();
   };
   $('#pvOpen').onclick = () => { location.hash = 'preview'; SCREENS.preview(); };
@@ -644,6 +647,7 @@ SCREENS.admin = async function () {
     const slot = auto || custom ? null : pidSel.value;
     const pid = auto ? null : custom ? $('#pidCustom').value.trim() : nextPid(sessions, isTest);
     if (!auto && !pid) return alert('참가자 번호를 입력하세요.');
+    if (!isTest && !confirm(`이번 참가자 번호는 ${pid || nextPid(sessions, false)} 입니다.\n\n다른 PC에서 진행한 본실험이 있었다면, 그 PC의 인계 파일을 먼저 가져오셨나요?\n(가져오지 않으면 번호가 겹칩니다)`)) return;
     if (slot && !isTest && done.has(slot) && !confirm(slot + ' 칸은 이미 완료됐습니다. 계속할까요?')) return;
     const row = asg.table.find(r => r.pid === slot);
     if (row && (row.condition !== condSel.value || row.world !== worldSel.value) && !confirm(`배정표(${row.condition} · ${getWorld(row.world).short})와 다르게 (${condSel.value} · ${getWorld(worldSel.value).short}) 시작합니다. 계속할까요?`)) return;
@@ -664,9 +668,17 @@ SCREENS.admin = async function () {
   };
   $('#expCsv').onclick = () => exportCsv(sessions);
   $('#expJson').onclick = () => download(`sessions_${stamp()}.json`, JSON.stringify(sessions, null, 1), 'application/json');
+  // 인계 파일: 이미지를 뺀 가벼운 세션 기록 (번호·배정·CSV용 응답은 모두 포함). 이미지 원본은 진행한 PC의 전체 JSON에
+  $('#expHandoff').onclick = () => {
+    const strip = s => ({ ...s, handoff: s.handoff || `PC${s.station ?? getStation() ?? '?'}`, sketch: { ...s.sketch, dataUrl: undefined }, gen: { ...s.gen, attempts: (s.gen?.attempts || []).map(a => ({ ...a, image: undefined })) } });
+    download(`handoff_PC${getStation() ?? ''}_${stamp()}.json`, JSON.stringify(sessions.map(strip)), 'application/json');
+  };
   $('#impJson').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    const arr = JSON.parse(await f.text()); for (const s of [].concat(arr)) await DB.put(s);
+    // 이미 있는 세션은 덮어쓰지 않음 (이 PC의 이미지 원본 보호) → 없는 세션만 추가
+    const have = new Set(sessions.map(s => s.id)); let added = 0;
+    for (const s of [].concat(JSON.parse(await f.text()))) if (s?.id && !have.has(s.id)) { await DB.put(s); added++; }
+    alert(`${added}개 세션을 가져왔습니다 (이미 있던 ${[].concat(JSON.parse(await f.text())).length - added}개는 건너뜀).`);
     SCREENS.admin();
   };
   $('#reseed').onclick = () => { if (confirm('배정표를 새로 만듭니다. 데이터 수집 시작 후에는 하지 마세요.')) { localStorage.removeItem('assignment'); SCREENS.admin(); } };

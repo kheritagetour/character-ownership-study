@@ -58,11 +58,21 @@ def load(paths, include_test):
                 rows.append(r)
     keep = [r for r in rows if r.get("completed") == "1" and (include_test or r.get("is_test") != "1")]
     dropped = len(rows) - len(keep)
-    # 같은 pid가 여러 번 완료된 경우 마지막 세션만 사용
-    by_pid = {}
+    # 같은 PC에서 같은 pid가 여러 번 완료된 경우(재진행) 마지막 세션만 사용.
+    # 다른 PC에서 같은 pid가 나오면(인계 파일을 안 가져와 번호 충돌) 둘 다 실제 참가자이므로 모두 남기고 경고
+    by_key = {}
     for r in sorted(keep, key=lambda r: r.get("completed_at", "")):
-        by_pid[r["pid"]] = r
-    return list(by_pid.values()), dropped, len(keep) - len(by_pid)
+        by_key[(r["pid"], r.get("station", ""))] = r
+    pids = Counter(k[0] for k in by_key)
+    clash = sorted(p for p, n in pids.items() if n > 1)
+    if clash:
+        print(f"[경고] 서로 다른 PC에서 같은 참가자 번호: {', '.join(clash)} — 둘 다 분석에 포함 (pid에 PC 번호를 붙임)", file=sys.stderr)
+    out = []
+    for (pid, st), r in by_key.items():
+        if pid in clash:
+            r = {**r, "pid": f"{pid}-PC{st}"}
+        out.append(r)
+    return out, dropped, len(keep) - len(by_key)
 
 
 def col(rows, name):

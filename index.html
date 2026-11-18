@@ -97,6 +97,9 @@
  * ===================================================================== */
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
+  // 여러 PC에서 동시에 진행: PC마다 '실험 PC 번호'(1–9)를 정하고, 배정은 PC(=사이트)별 층화 블록 무선배정
+  // PC k의 배정표 시드 = ASSIGN_SEED × 10 + k (재현 가능). 참가자 번호 P{k}-01, P{k}-02… (PC끼리 겹치지 않음)
+  ASSIGN_SEED: 20261118,
   N_PER_STRATUM: 16,               // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 4). 목표는 층별 8명이지만, 모집이 한쪽으로 몰려도 배정표가 바닥나지 않도록 여유 있게 (블록 단위라 어디서 끊겨도 4명마다 균형)
   // 1차 이미지는 A/B 모두 컨셉 시트 + 스케치로 자동 생성 (참가자가 프롬프트를 따로 쓰지 않음 — 2차 파일럿 피드백)
   // 1차 결과를 보는 시간을 A/B 동일하게 고정: A는 살펴보기만, B는 같은 시간 동안 수정 요청 작성
@@ -268,16 +271,19 @@ function makeAssignment(n, seed) {
 function getAssignment() {
   let a = LS.get('assignment', null);
   if (a && a.table.some(r => !r.world || !r.stratum)) a = null;   // 이전 형식 배정표는 새로 만듦
+  const seed = CONFIG.ASSIGN_SEED * 10 + (getStation() || 0);
+  if (a && a.seed !== seed) a = null;   // PC 번호가 정해지거나 바뀌면 그 PC의 배정표로
   if (a && a.table.length !== CONFIG.N_PER_STRATUM * STRATA.length) { a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }   // 크기 변경: 같은 시드로 늘림 (앞 칸 유지)
-  if (!a) { a = { seed: Math.floor(Math.random() * 1e9), table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
+  if (!a) { a = { seed, table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
   return a;
 }
 const getStratum = id => STRATA.find(s => s.id === id);
-// 참가자 번호: 본실험 P01, P02… (층과 무관하게 순서대로) / 테스트 T01, T02…
+// 참가자 번호: 본실험 P{PC}-01, P{PC}-02… (그 PC에서 층과 무관하게 순서대로) / 테스트 T{PC}-01…
 // 배정표의 E01·N01은 '배정 칸'(slot)이고, 세션에는 slot으로 따로 기록
 const slotOf = s => s.slot || s.pid;
+const getStation = () => { const k = +LS.get('station', 0); return k >= 1 && k <= 9 ? k : null; };
 function nextPid(sessions, test) {
-  const pre = test ? 'T' : 'P', re = new RegExp('^' + pre + '(\\d+)$');
+  const pre = (test ? 'T' : 'P') + getStation() + '-', re = new RegExp('^' + pre + '(\\d+)$');
   const nums = sessions.filter(s => !!s.isTest === test).map(s => +((s.pid || '').match(re)?.[1] || 0));
   return pre + String(Math.max(0, ...nums) + 1).padStart(2, '0');
 }
@@ -508,6 +514,12 @@ SCREENS.admin = async function () {
   ${DB.mem ? '<div class="card" style="border-color:var(--warn);color:var(--warn)">이 브라우저에서는 데이터 저장소를 쓸 수 없어 <b>임시 저장</b> 중입니다 (새로고침하면 사라짐). 시크릿 모드나 앱 내 브라우저라면 일반 Chrome 창으로 열어 주세요. 세션이 끝나면 바로 CSV로 내보내세요.</div>' : ''}
   <p class="lead">참가자에게 화면을 넘기기 전에 이 화면에서 세션을 시작하세요. 진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
 
+  <div class="card" style="${getStation() ? '' : 'border-color:var(--warn)'}">
+    <h2 style="margin-top:0">실험 PC 번호 ${getStation() ? `<span class="pill">PC ${getStation()}</span>` : ''}</h2>
+    <p class="muted" style="margin-top:0">PC(크롬 프로필)마다 겹치지 않는 번호를 한 번 정해 주세요. 참가자 번호가 <b>P{PC번호}-01</b>부터 붙고, 배정표도 PC별로 따로 만들어집니다. <b>데이터 수집 시작 후에는 바꾸지 마세요.</b></p>
+    <select id="station" style="width:auto"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select>
+  </div>
+
   <div class="card">
     <h2 style="margin-top:0">새 세션</h2>
     <div class="grid2">
@@ -589,6 +601,11 @@ SCREENS.admin = async function () {
   $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
   $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
   $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
+  $('#station').onchange = e => {
+    const k = +e.target.value || 0, cur = getStation();
+    if (cur && sessions.some(s => !s.isTest && s.station === cur) && !confirm('이 PC에 이미 본실험 데이터가 있습니다. 번호를 바꾸면 참가자 번호와 배정표가 달라집니다. 계속할까요?')) { e.target.value = cur; return; }
+    LS.set('station', k); SCREENS.admin();
+  };
   $('#pvOpen').onclick = () => { location.hash = 'preview'; SCREENS.preview(); };
   $('#testGen').onclick = async () => {
     LS.set('openaiKey', $('#okey')?.value.trim() || '');
@@ -617,6 +634,13 @@ SCREENS.admin = async function () {
   $('#start').onclick = async () => {
     const auto = stSel.value === 'auto';
     const isTest = $('#isTest').checked, custom = pidSel.value === '__custom';
+    if (!getStation()) return alert('먼저 위에서 실험 PC 번호를 정해 주세요.');
+    // 본실험은 모든 PC에서 같은 생성 설정이어야 함
+    if (!isTest) {
+      const pv = $('#provider').value, m = LS.get('openaiModel', CONFIG.OPENAI_MODEL), qy = LS.get('openaiQuality', CONFIG.OPENAI_QUALITY);
+      if (pv !== 'openai' || m !== CONFIG.OPENAI_MODEL || qy !== CONFIG.OPENAI_QUALITY)
+        return alert(`본실험은 모든 PC에서 OpenAI · ${CONFIG.OPENAI_MODEL} · ${CONFIG.OPENAI_QUALITY} 로 진행합니다. 이미지 생성 모델 설정을 맞춰 주세요. (다른 설정은 '테스트/파일럿 세션'으로만 가능)`);
+    }
     const slot = auto || custom ? null : pidSel.value;
     const pid = auto ? null : custom ? $('#pidCustom').value.trim() : nextPid(sessions, isTest);
     if (!auto && !pid) return alert('참가자 번호를 입력하세요.');
@@ -628,7 +652,7 @@ SCREENS.admin = async function () {
     if (prov === 'openai' && !LS.get('openaiKey', '')) return alert('OpenAI API 키를 입력하세요. (테스트만 할 거라면 Mock을 선택)');
     const ts = Date.now();
     S = {
-      id: `${pid || 'auto'}_${ts}`, studyId: CONFIG.STUDY_ID, pid, slot, autoAssign: auto,
+      id: `${pid || 'auto'}_${ts}`, studyId: CONFIG.STUDY_ID, station: getStation(), pid, slot, autoAssign: auto,
       stratum: auto ? null : stSel.value, condition: auto ? null : condSel.value, world: auto ? null : worldSel.value,
       isTest, provider: prov, model: PROVIDERS[prov].model(),
       config: CONFIG, userAgent: navigator.userAgent,
@@ -1184,7 +1208,7 @@ function flatten(s) {
   const fin = ok.find(a => a.idx === g.finalIdx);
   const sc = k => SCALES[k].items.map(([id]) => p[id]);
   const row = {
-    pid: s.pid, slot: s.slot ?? '', orig_pid: s.origPid ?? '', session_id: s.id, stratum: s.stratum ?? '', condition: s.condition, world: s.world ?? '', is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
+    pid: s.pid, station: s.station ?? '', slot: s.slot ?? '', orig_pid: s.origPid ?? '', session_id: s.id, stratum: s.stratum ?? '', condition: s.condition, world: s.world ?? '', is_test: s.isTest ? 1 : 0, completed: s.completedAt ? 1 : 0,
     provider: s.provider, model: s.model, started_at: s.startedAt, completed_at: s.completedAt,
     total_minutes: s.completedAt ? +((Date.parse(s.completedAt) - Date.parse(s.startedAt)) / 60000).toFixed(2) : null,
     ...Object.fromEntries(['ai_text_freq', 'ai_image_freq', 'ai_image_skill', 'art_exp', 'char_exp', 'draw_skill', 'age', 'gender'].map(k => ['pre_' + k, s.pre?.[k] ?? null])),

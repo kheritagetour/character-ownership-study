@@ -2,7 +2,7 @@
 Team 2 — Creative involvement & psychological ownership
 실험 웹앱(index.html)에서 내보낸 CSV를 분석한다.
 
-사용:  python3 analysis/analyze.py ownership_study_XXXX.csv [--include-test] [--out results.md]
+사용:  python3 analysis/analyze.py PC1.csv PC2.csv ... [--include-test] [--out results.md]   (PC별 CSV를 한 번에)
 
 분석 계획 (PDF p.11 / Appendix)
   - 신뢰도: PO, IA, CC Cronbach's α / AU 2문항 Spearman-Brown
@@ -46,9 +46,16 @@ def to_num(v):
         return np.nan
 
 
-def load(path, include_test):
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+def load(paths, include_test):
+    # 여러 PC에서 내보낸 CSV를 합침. 같은 세션이 여러 파일에 있으면(누적 내보내기) 한 번만
+    rows, seen = [], set()
+    for path in paths:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            for r in csv.DictReader(f):
+                if r.get("session_id") in seen:
+                    continue
+                seen.add(r.get("session_id"))
+                rows.append(r)
     keep = [r for r in rows if r.get("completed") == "1" and (include_test or r.get("is_test") != "1")]
     dropped = len(rows) - len(keep)
     # 같은 pid가 여러 번 완료된 경우 마지막 세션만 사용
@@ -221,7 +228,7 @@ def fmt_cmp(c, one_sided=True):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("csv")
+    ap.add_argument("csv", nargs="+", help="PC별로 내보낸 CSV 여러 개 가능")
     ap.add_argument("--include-test", action="store_true", help="is_test=1 세션도 포함 (파일럿 데이터 점검용)")
     ap.add_argument("--out", default=None, help="마크다운 보고서 저장 경로")
     args = ap.parse_args()
@@ -231,7 +238,7 @@ def main():
     w = out.append
     cond = np.array([r["condition"] for r in rows])
     w("# Ownership Study — Analysis Report\n")
-    w(f"- 입력: `{args.csv}`")
+    w(f"- 입력: {', '.join(f'`{c}`' for c in args.csv)}")
     w(f"- 분석 대상 N = {len(rows)} (A = {(cond == 'A').sum()}, B = {(cond == 'B').sum()})"
       f" · 제외: 미완료/테스트 {dropped}건, 중복 pid {dup}건\n")
     if len(rows) < 4:

@@ -97,10 +97,11 @@
  * ===================================================================== */
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
-  // 여러 PC 진행: 팀 서버(Google Apps Script + 시트, server/Code.gs)가 참가자 번호(P01…)와 배정 칸 순번을 한 곳에서 나눠 주고,
-  // 세션 데이터를 시트·드라이브에 모음. API 키는 서버에만 있고 팀 코드를 넣은 PC에 메모리로만 전달됨
-  SERVER_URL: '',                  // 배포한 Apps Script 웹 앱 주소 (https://script.google.com/macros/s/…/exec)
-  ASSIGN_SEED: 20261118,           // 모든 PC가 같은 배정표 (경험 층별 4명 블록 무선배정)
+  // 여러 PC 진행 (기본: 서버 없음): PC마다 번호 P{PC}-01…, 배정은 PC(사이트)별 층화 블록 무선배정(시드 ASSIGN_SEED×10+PC),
+  // 데이터는 PC별 CSV를 합쳐 분석. API 키는 '팀 키 링크'(팀 코드로 암호화)로 전달.
+  // (선택) 팀 서버(server/Code.gs)를 배포해 SERVER_URL을 넣으면 번호·배정·저장을 서버가 한 곳에서 처리
+  SERVER_URL: '',
+  ASSIGN_SEED: 20261118,
   N_PER_STRATUM: 16,               // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 4). 목표는 층별 8명이지만, 모집이 한쪽으로 몰려도 배정표가 바닥나지 않도록 여유 있게 (블록 단위라 어디서 끊겨도 4명마다 균형)
   // 1차 이미지는 A/B 모두 컨셉 시트 + 스케치로 자동 생성 (참가자가 프롬프트를 따로 쓰지 않음 — 2차 파일럿 피드백)
   // 1차 결과를 보는 시간을 A/B 동일하게 고정: A는 살펴보기만, B는 같은 시간 동안 수정 요청 작성
@@ -265,6 +266,24 @@ async function connectServer() {
   try { const j = await api('ping', {}, 15000); return Object.assign(SERVER, { ok: true, key: j.key || '', status: j.status, error: '' }); }
   catch (e) { return Object.assign(SERVER, { ok: false, key: '', error: e.message }); }
 }
+/* 팀 키 링크: OpenAI 키를 팀 코드로 암호화(PBKDF2 31만 회 + AES-GCM)해 링크 #k= 에 담음. 주소의 # 뒤는 어떤 서버로도 전송되지 않음 */
+const b64u = b => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function deriveKey(code, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptKey(key, code) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await deriveKey(code, salt), new TextEncoder().encode(key)));
+  return b64u(new Uint8Array([...salt, ...iv, ...ct]));
+}
+async function decryptKey(blob, code) {
+  const b = unb64u(blob);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(16, 28) }, await deriveKey(code, b.slice(0, 16)), b.slice(28)));
+}
+const pendingKeyLink = () => (location.hash.match(/^#k=([\w-]+)$/) || [])[1] || null;
+
 // 완료된 세션을 서버로 (시트 1행 + 드라이브에 이미지 포함 JSON). 실패하면 연구자 화면에서 다시 보내기
 async function syncSession(s) {
   if (!SERVER.ok) return false;
@@ -294,8 +313,8 @@ function makeAssignment(n, seed) {
 function getAssignment() {
   let a = LS.get('assignment', null);
   if (a && a.table.some(r => !r.world || !r.stratum)) a = null;   // 이전 형식 배정표는 새로 만듦
-  const seed = CONFIG.ASSIGN_SEED;
-  if (a && a.seed !== seed) a = null;   // 모든 PC가 같은 배정표를 쓰도록 고정 시드
+  const seed = serverUrl() ? CONFIG.ASSIGN_SEED : CONFIG.ASSIGN_SEED * 10 + (getStation() || 0);
+  if (a && a.seed !== seed) a = null;   // 서버 모드: 모든 PC 공통 표 / 서버 없음: PC별 표
   if (a && a.table.length !== CONFIG.N_PER_STRATUM * STRATA.length) { a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }   // 크기 변경: 같은 시드로 늘림 (앞 칸 유지)
   if (!a) { a = { seed, table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
   return a;
@@ -306,7 +325,7 @@ const getStratum = id => STRATA.find(s => s.id === id);
 const slotOf = s => s.slot || s.pid;
 const getStation = () => { const k = +LS.get('station', 0); return k >= 1 && k <= 9 ? k : null; };
 function nextPid(sessions, test) {
-  const pre = test ? 'T' : 'P', re = new RegExp('^' + pre + '(\\d+)$');
+  const pre = (test ? 'T' : 'P') + (serverUrl() ? '' : (getStation() || '') + '-'), re = new RegExp('^' + pre.replace('-', '\\-') + '(\\d+)$');
   const nums = sessions.filter(s => !!s.isTest === test).map(s => +((s.pid || '').match(re)?.[1] || 0));
   return pre + String(Math.max(0, ...nums) + 1).padStart(2, '0');
 }
@@ -544,7 +563,7 @@ SCREENS.admin = async function () {
     <select id="station" style="width:auto"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select>
   </div>
 
-  <div class="card" style="border-color:${SERVER.ok ? 'var(--line)' : 'var(--warn)'}">
+  ${serverUrl() ? `<div class="card" style="border-color:${SERVER.ok ? 'var(--line)' : 'var(--warn)'}">
     <h2 style="margin-top:0">팀 서버 ${SERVER.ok ? '<span class="pill">연결됨</span>' : ''}</h2>
     <p class="muted" style="margin-top:0">본실험은 팀 서버에 연결된 상태에서만 시작됩니다. 서버가 참가자 번호(P01, P02…)와 조건 배정을 모든 PC에서 이어서 나눠 주고, 완료된 세션을 공유 시트·드라이브에 저장합니다. OpenAI 키도 서버에서 받아 옵니다 (화면에 표시되지 않음).</p>
     <div class="grid2">
@@ -554,6 +573,14 @@ SCREENS.admin = async function () {
     <div class="actions" style="justify-content:flex-start;align-items:center"><button class="secondary" id="srvConnect">연결</button>
       <span class="${SERVER.ok ? 'muted' : 'err'}">${SERVER.ok ? `다음 본실험 번호 <b>${esc(SERVER.status?.nextP || '')}</b> · 지금까지 배정 ${SERVER.status?.assignedP ?? 0}명 · 서버 저장 ${SERVER.status?.saved ?? 0}건 · OpenAI 키 ${SERVER.key ? '받음 ✓' : '<b>없음</b> (서버 설정 확인)'}` : esc(SERVER.error || '연결 안 됨')}</span></div>
     ${(() => { const un = sessions.filter(s => s.completedAt && !s.syncedAt && !s.handoff).length; return un ? `<p style="color:var(--warn);margin:6px 0 0">서버로 보내지 못한 완료 세션 ${un}개 <button class="secondary" id="srvResend" style="padding:4px 10px">다시 보내기</button></p>` : ''; })()}
+  </div>` : `<details class="card"><summary class="muted" style="cursor:pointer">(선택) 팀 서버 사용</summary><p class="muted">server/Code.gs를 배포했을 때만 주소를 넣으세요. 넣으면 번호·배정·저장을 서버가 처리합니다.</p><input type="text" id="srvUrl" placeholder="https://script.google.com/macros/s/…/exec"> <input type="password" id="srvCode" placeholder="팀 코드" style="margin-top:6px"><div class="actions" style="justify-content:flex-start"><button class="secondary" id="srvConnect">연결</button></div></details>`}
+
+  <div class="card">
+    <h2 style="margin-top:0">OpenAI 키 ${SERVER.key || LS.get('openaiKey', '') ? '<span class="pill">이 PC에 설정됨</span>' : ''}</h2>
+    ${pendingKeyLink() ? `<p><b>팀 키 링크로 열었습니다.</b> 팀 코드를 입력하면 이 PC에 키가 설정됩니다.</p>
+      <div class="grid2"><input type="password" id="klCode" placeholder="팀 코드"><button id="klApply">키 받기</button></div><div class="err" id="klErr"></div>`
+    : `<p class="muted" style="margin-top:0">키 주인: 아래 「새 세션」의 키 칸에 키를 넣은 뒤, 팀 코드로 <b>팀 키 링크</b>를 만들어 팀원에게 보내세요. 링크에는 팀 코드로 암호화된 키만 들어 있어, 팀 코드 없이는 열 수 없습니다. 팀원은 링크를 열고 팀 코드만 입력하면 됩니다.</p>
+      <div class="grid2"><input type="password" id="klMakeCode" placeholder="팀 코드 (팀원과 따로 공유)"><button class="secondary" id="klMake">팀 키 링크 만들기 (복사)</button></div><div class="muted" id="klOut"></div>`}
   </div>
 
   <div class="card">
@@ -642,11 +669,23 @@ SCREENS.admin = async function () {
     if (cur && sessions.some(s => !s.isTest && s.station === cur) && !confirm('이 PC 번호로 진행한 본실험 데이터가 있습니다. 바꿀까요?')) { e.target.value = cur; return; }
     LS.set('station', k); SCREENS.admin();
   };
-  $('#srvConnect').onclick = async () => {
+  if ($('#srvConnect')) $('#srvConnect').onclick = async () => {
     if ($('#srvUrl')) LS.set('serverUrl', $('#srvUrl').value.trim());
     LS.set('teamCode', $('#srvCode').value.trim());
     $('#srvConnect').textContent = '연결 중…'; await connectServer(); SCREENS.admin();
   };
+  $('#klMake')?.addEventListener('click', async () => {
+    const key = $('#okey')?.value.trim() || LS.get('openaiKey', ''), code = $('#klMakeCode').value.trim();
+    if (!key) return $('#klOut').textContent = '먼저 「새 세션」의 OpenAI 키 칸에 키를 넣어 주세요.';
+    if (code.length < 8) return $('#klOut').textContent = '팀 코드는 8자 이상으로 정해 주세요.';
+    const link = location.href.split('#')[0] + '#k=' + await encryptKey(key, code);
+    try { await navigator.clipboard.writeText(link); $('#klOut').textContent = '링크를 복사했습니다. 팀원에게 링크와 팀 코드를 따로 보내세요.'; }
+    catch { $('#klOut').innerHTML = '아래 링크를 복사해 팀원에게 보내세요:<br><code style="word-break:break-all">' + esc(link) + '</code>'; }
+  });
+  $('#klApply')?.addEventListener('click', async () => {
+    try { const key = await decryptKey(pendingKeyLink(), $('#klCode').value.trim()); LS.set('openaiKey', key); LS.set('provider', 'openai'); history.replaceState(null, '', location.pathname); SCREENS.admin(); }
+    catch { $('#klErr').textContent = '팀 코드가 맞지 않습니다.'; }
+  });
   $('#srvResend')?.addEventListener('click', async () => {
     let ok = 0; for (const s of sessions.filter(s => s.completedAt && !s.syncedAt && !s.handoff)) if (await syncSession(s)) ok++;
     alert(`${ok}개 세션을 서버로 보냈습니다.`); await connectServer(); SCREENS.admin();
@@ -681,8 +720,8 @@ SCREENS.admin = async function () {
     const isTest = $('#isTest').checked, custom = pidSel.value === '__custom';
     if (!getStation()) return alert('먼저 위에서 실험 PC 번호를 정해 주세요.');
     // 본실험은 모든 PC에서 같은 생성 설정이어야 함
-    if (!isTest && !SERVER.ok) return alert('본실험은 팀 서버에 연결된 상태에서만 시작할 수 있습니다. 위의 「팀 서버」에서 연결해 주세요.');
-    if (!isTest && !auto) return alert('본실험은 창작 경험 「자동」으로만 시작합니다 (번호·배정을 서버에서 받음). 수동 지정은 테스트로만 가능합니다.');
+    if (!isTest && serverUrl() && !SERVER.ok) return alert('팀 서버가 설정돼 있지만 연결되지 않았습니다. 위의 「팀 서버」에서 연결해 주세요.');
+    if (!isTest && SERVER.ok && !auto) return alert('본실험은 창작 경험 「자동」으로만 시작합니다 (번호·배정을 서버에서 받음). 수동 지정은 테스트로만 가능합니다.');
     if (!isTest) {
       const pv = $('#provider').value, m = LS.get('openaiModel', CONFIG.OPENAI_MODEL), qy = LS.get('openaiQuality', CONFIG.OPENAI_QUALITY);
       if (pv !== 'openai' || m !== CONFIG.OPENAI_MODEL || qy !== CONFIG.OPENAI_QUALITY)

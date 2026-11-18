@@ -729,7 +729,7 @@ SCREENS.pre = function () {
     ${freq('ai_text_freq', '텍스트 생성형 AI (ChatGPT, Claude 등) 사용 빈도')}
     ${freq('ai_image_freq', '이미지 생성형 AI (ChatGPT·Gemini 이미지 생성, Midjourney 등) 사용 빈도')}
     <label class="field">사용해 본 이미지 생성 도구 <small>(모두 선택)</small></label>
-    <div>${['ChatGPT', 'Gemini', 'Midjourney', 'Adobe Firefly', 'Microsoft Copilot', 'Canva', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    <div>${['ChatGPT', 'Gemini (나노바나나)', 'Midjourney', 'Adobe Firefly', 'Microsoft Copilot', '기타', '없음'].map(t => `<label style="margin-right:14px;white-space:nowrap"><input type="checkbox" name="ai_tools" value="${t}" ${(p.ai_tools || []).includes(t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
     ${likertGenericHtml('ai_image_skill', '이미지 생성 AI로 원하는 결과를 얻는 데 자신이 있다.', p.ai_image_skill, LIKERT_ANCHORS)}
   </div>
   <div class="card">

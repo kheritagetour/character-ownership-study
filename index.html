@@ -178,30 +178,30 @@ function worldHtml(w, compact) {
 const SCALES = {
   PO: { name: '심리적 소유감', items: [
     ['PO1', '법적 소유권과 관계없이, 나는 이 캐릭터가 내 것이라고 느낀다.', 'Regardless of its legal ownership status, I feel that this character is mine.'],
-    ['PO2', '나는 이 캐릭터를 소유하고 있는 것처럼 느낀다.', 'I feel as though I own this character.'],
+    ['PO2', '이 캐릭터를 내가 소유하고 있다는 느낌이 든다.', 'I feel as though I own this character.'],
     ['PO3', '이 캐릭터가 내 것이라는 느낌이 강하게 든다.', 'I have a strong sense that this character is mine.'],
-    ['PO4', '이것은 나의 캐릭터처럼 느껴진다.', 'This feels like my character.'],
-    ['PO5', '나는 이 캐릭터에 대해 높은 수준의 개인적 소유감을 느낀다.', 'I feel a high degree of personal ownership over this character.'],
+    ['PO4', '이 캐릭터는 \'내 캐릭터\'처럼 느껴진다.', 'This feels like my character.'],
+    ['PO5', '나는 이 캐릭터에 대해 강한 개인적 소유감을 느낀다.', 'I feel a high degree of personal ownership over this character.'],
   ]},
   IA: { name: '의도 일치도', items: [
-    ['IA1', '최종 캐릭터는 내가 원래 의도한 것을 반영한다.', 'The final character reflects what I originally intended.'],
-    ['IA2', '최종 캐릭터는 AI 사용 전에 내가 만든 컨셉 시트 및 스케치와 일치한다.', 'The final character matches the concept sheet and sketch I made before using AI.'],
-    ['IA3', '내가 계획한 이 캐릭터의 핵심 특징이 최종 이미지에 나타나 있다.', 'The key features I planned for this character appear in the final image.'],
+    ['IA1', '최종 캐릭터에는 내가 처음 의도한 바가 반영되어 있다.', 'The final character reflects what I originally intended.'],
+    ['IA2', '최종 캐릭터는 AI를 사용하기 전에 내가 만든 컨셉 시트·스케치의 내용과 일치한다.', 'The final character matches the concept sheet and sketch I made before using AI.'],
+    ['IA3', '내가 계획한 캐릭터의 핵심 특징이 최종 이미지에 드러나 있다.', 'The key features I planned for this character appear in the final image.'],
   ]},
   AU: { name: '지각된 저자성', items: [
-    ['AU1', '나는 내가 이 캐릭터의 창작자라고 느낀다.', 'I feel that I am the creator of this character.'],
-    ['AU2', '나는 내가 이 캐릭터를 만드는 데 주된 기여자라고 생각한다.', 'I consider myself the main contributor to creating this character.'],
+    ['AU1', '내가 이 캐릭터의 창작자라고 느낀다.', 'I feel that I am the creator of this character.'],
+    ['AU2', '이 캐릭터를 만드는 데 주로 기여한 사람은 나라고 생각한다.', 'I consider myself the main contributor to creating this character.'],
   ]},
   CC: { name: '지각된 창작 통제감', items: [
     ['CC1', '나는 캐릭터의 전반적인 창작 방향을 결정할 수 있었다.', 'I was able to determine the overall creative direction of the character.'],
-    ['CC2', '나는 캐릭터 제작 과정을 어떻게 진행할지 결정하는 데 상당한 자율성을 가졌다.', 'I had considerable autonomy in deciding how the character creation process was carried out.'],
+    ['CC2', '나는 캐릭터 제작 과정을 어떻게 진행할지 상당히 자율적으로 정할 수 있었다.', 'I had considerable autonomy in deciding how the character creation process was carried out.'],
     ['CC3', '나는 캐릭터 제작 과제를 어떤 방식으로 수행할지 스스로 결정할 수 있었다.', 'I could independently decide how to approach the character creation task.'],
   ]},
 };
 const CREDIT_OPTIONS = [
   ['self', '나 자신', 'Myself'],
-  ['joint', '나와 AI 공동', 'Myself and AI jointly'],
-  ['ai_main', '주로 AI, 나는 보조', 'Mainly AI, with my assistance'],
+  ['joint', '나와 AI가 함께', 'Myself and AI jointly'],
+  ['ai_main', '주로 AI (나는 보조)', 'Mainly AI, with my assistance'],
   ['other', '기타', 'Other'],
 ];
 const LIKERT_ANCHORS = ['전혀 그렇지 않다', '매우 그렇다'];
@@ -1248,7 +1248,7 @@ SCREENS.postCov = function () {
   h(`<h1>사후 설문 (마지막)</h1>
   <div class="card">
     <p class="muted" style="margin-top:0">아래 문항은 이 이미지가 <b>인터랙티브 스토리(게임)에 등장할 이 인물의 공식 캐릭터 일러스트</b>로 쓰인다고 생각하고 답해 주세요.</p>
-    ${likertGenericHtml('satisfaction', '최종 생성된 캐릭터 이미지에 전반적으로 만족한다.<span class="en">Overall, I am satisfied with the final character image.</span>', p.satisfaction, LIKERT_ANCHORS)}
+    ${likertGenericHtml('satisfaction', '최종 캐릭터 이미지에 전반적으로 만족한다.<span class="en">Overall, I am satisfied with the final character image.</span>', p.satisfaction, LIKERT_ANCHORS)}
     <label class="field" style="margin-top:22px">최종 캐릭터를 만드는 데 나와 AI는 각각 얼마나 기여했다고 생각하십니까?<span class="en">How much did you and the AI each contribute to creating the final character?</span></label>
     <p class="muted" style="margin:0">0 = 전적으로 내가 만듦 · 50 = 반반 · 100 = 전적으로 AI가 만듦</p>${sliderHtml('ai_contribution', p.ai_contribution)}
   </div>

@@ -451,11 +451,11 @@ const CONCEPT_FIELDS = [
   { group: '외형', key: 'hair', label: '머리카락', ph: '예: 은색 긴 머리를 한쪽으로 땋음', required: true },
   { group: '외형', key: 'skin', label: '피부색', ph: '예: 창백한 피부, 볼에 주근깨', required: true },
   { group: '외형', key: 'outfit', label: '옷', ph: '예: 기운 자국이 많은 남색 코트, 가죽 장화', required: true, area: true },
-  { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 낡은 가죽 가방, 손목에 감은 붕대', required: false },
+  { group: '외형', key: 'items', label: '소지품·장신구', ph: '예: 낡은 가죽 가방, 손목에 감은 붕대 (없으면 \'없음\')', required: true },
   { group: '외형', key: 'keyFeature', label: '핵심 시각 특징', ph: '이 캐릭터를 한눈에 알아보게 하는 특징 1–2가지. 예: 한쪽만 기계로 된 팔, 늘 들고 다니는 커다란 책', required: true, area: true },
   { group: '성격', key: 'mbti', label: 'MBTI', type: 'mbti', required: true },
   { group: '성격', key: 'traits', label: '성격 키워드', type: 'traits', required: true },
-  { group: '성격', key: 'personality', label: '성격 설명', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: false, area: true },
+  { group: '성격', key: 'personality', label: '성격 설명', ph: '예: 겁이 많지만 호기심이 강하고, 남을 잘 챙긴다', required: true, area: true },
 ];
 const MBTI_TYPES = ['ISTJ', 'ISFJ', 'INFJ', 'INTJ', 'ISTP', 'ISFP', 'INFP', 'INTP', 'ESTP', 'ESFP', 'ENFP', 'ENTP', 'ESTJ', 'ESFJ', 'ENFJ', 'ENTJ'];
 const TRAIT_GROUPS = [
@@ -472,7 +472,7 @@ const conceptValue = (c, f) => Array.isArray(c[f.key]) ? c[f.key].join(', ') : c
 /* 컨셉 시트 → 1차 생성 프롬프트 (고정 템플릿, A/B 동일). 성격은 표정·자세·분위기로 드러나도록 안내 */
 function buildPrompt(c, w = getWorld()) {
   const v = k => { const f = CONCEPT_FIELDS.find(f => f.key === k); return String((f && conceptValue(c, f)) || '').trim(); };
-  const line = (label, ...keys) => { const t = keys.map(v).filter(x => x && x !== '모름').join(', '); return t ? `- ${label}: ${t}` : null; };
+  const line = (label, ...keys) => { const t = keys.map(v).filter(x => x && x !== '모름' && x !== '없음').join(', '); return t ? `- ${label}: ${t}` : null; };
   return [
     CONFIG.AUTO_PROMPT_INTRO,
     `- 세계관: ${w.title} (${w.summary})`,
@@ -539,6 +539,7 @@ SCREENS.admin = async function () {
     <label style="display:block;margin-top:12px"><input type="checkbox" id="isTest"> 테스트/파일럿 세션 (분석 내보내기에서 표시됨)</label>
     <div class="actions">
       <button class="secondary" id="testGen">생성 연결 테스트</button>
+      <button class="secondary" id="pvOpen">전체 문항 미리보기</button>
       <button id="start">세션 시작 → 참가자에게 화면 전달</button>
     </div>
     <div id="testOut" class="muted"></div>
@@ -589,6 +590,7 @@ SCREENS.admin = async function () {
   $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
   $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
   $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
+  $('#pvOpen').onclick = () => { location.hash = 'preview'; SCREENS.preview(); };
   $('#testGen').onclick = async () => {
     LS.set('openaiKey', $('#okey')?.value.trim() || '');
     const out = $('#testOut'); out.textContent = '생성 중…';
@@ -648,6 +650,37 @@ SCREENS.admin = async function () {
   $$('[data-resume]').forEach(b => b.onclick = () => { S = sessions.find(s => s.id === b.dataset.resume); log('session_resume'); go(S.screen || 'consent'); });
   $$('[data-dl]').forEach(b => b.onclick = () => { const s = sessions.find(s => s.id === b.dataset.dl); download(`${s.id}.json`, JSON.stringify(s, null, 1), 'application/json'); });
   $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm('이 세션을 삭제할까요? 되돌릴 수 없습니다.')) { await DB.del(b.dataset.del); SCREENS.admin(); } });
+};
+
+/* ---------- 전체 문항 미리보기 (주소 끝 #preview, 저장 없음) ----------
+ * 실제 화면 함수를 가짜 세션으로 차례로 그려 한 페이지에 모음 → 문항을 고치면 미리보기도 자동으로 같이 바뀜 */
+SCREENS.preview = function () {
+  document.getElementById('hdr-step').textContent = '전체 문항 미리보기';
+  const PH = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="100%" height="100%" fill="#eee"/><text x="50%" y="50%" text-anchor="middle" font-size="20" fill="#999">생성 이미지 자리</text></svg>');
+  S = { preview: true, condition: 'A', world: WORLDS[0].id, pre: {}, concept: {}, sketch: {}, screenTimes: {}, events: [], post: {},
+    gen: { attempts: [{ idx: 0, ok: true, image: PH }], finalIdx: 0 } };
+  const parts = [];
+  const grab = (tag, fn) => { try { fn(); } catch (e) { app.innerHTML = `<p class="muted">(미리보기로 그릴 수 없음: ${esc(e.message)})</p>`; } clearInterval(timerHandle); parts.push(`<section class="card" style="border-top:4px solid var(--navy)"><p style="margin:0 0 8px"><span class="pill">${tag}</span></p>${app.innerHTML}</section>`); };
+  grab('1. 동의', SCREENS.consent);
+  grab('2. 사전 설문', SCREENS.pre);
+  WORLDS.forEach(w => { S.world = w.id; grab(`3. 과제 상황 · 세계관 ${w.short}`, SCREENS.world); });
+  S.world = WORLDS[0].id;
+  grab('4. 컨셉 시트', SCREENS.concept);
+  grab('5. 스케치', SCREENS.sketch);
+  ['A', 'B'].forEach(c => { S.condition = c; grab(`6. 생성 안내 · 조건 ${c}`, SCREENS.genIntro); });
+  parts.push(`<section class="card" style="border-top:4px solid var(--navy)"><p style="margin:0 0 8px"><span class="pill">7. AI 생성</span></p>
+    <p><b>A</b> (결과 보기 ${CONFIG.A_VIEW_SEC / 60}분): ${esc(GEN_TEXT.view)}</p>
+    <p><b>B</b> (수정 요청 ${CONFIG.REVISION_SEC / 60}분, 최대 ${CONFIG.REVISION_MAX_CHARS}자): ${esc(GEN_TEXT.revise)}<br><small class="muted">입력 칸 예시: ${esc(GEN_TEXT.revisePh)}</small></p></section>`);
+  grab('8. 사후 설문 1/4', SCREENS.postPO);
+  grab('9. 사후 설문 2/4', SCREENS.postIA);
+  grab('10. 사후 설문 3/4', SCREENS.postAU);
+  grab('11. 사후 설문 4/4', SCREENS.postCov);
+  S = null;
+  h(`<h1>전체 문항 미리보기</h1><p class="lead">참가자가 보는 화면을 순서대로 모았습니다. 저장되지 않으며, 입력 칸은 잠겨 있습니다. 공유 주소: <code>${esc(location.href.split('#')[0])}#preview</code></p>
+    <div class="actions" style="justify-content:flex-start"><button class="secondary" id="pvBack">연구자 화면으로</button></div>
+    ${parts.join('')}`);
+  app.querySelectorAll('section input, section textarea, section select, section button, section canvas').forEach(el => { el.disabled = true; el.style.pointerEvents = 'none'; });
+  $('#pvBack').onclick = () => { history.replaceState(null, '', location.pathname); SCREENS.admin(); };
 };
 
 /* ---------- 1. Consent ---------- */
@@ -856,6 +889,11 @@ SCREENS.sketch = function () {
 };
 
 /* ---------- 6. Generation intro (조건별 안내) ---------- */
+const GEN_TEXT = {
+  view: '컨셉 시트와 스케치로 만든 캐릭터입니다. 이 이미지가 최종 캐릭터가 됩니다. 남은 시간 동안 천천히 살펴봐 주세요. 시간이 끝나면 자동으로 넘어갑니다.',
+  revise: '1차 결과를 보고, 내가 생각한 인물과 다르거나 바꾸고 싶은 점을 적어 주세요. 시간이 끝나면 적은 내용을 반영해 한 번 더 생성하고, 그 이미지가 최종 캐릭터가 됩니다. 아무것도 적지 않으면 1차 결과가 최종입니다.',
+  revisePh: '예: 머리를 더 짧게, 코트를 남색으로, 표정을 더 지친 느낌으로, 들고 있는 책을 더 크게',
+};
 SCREENS.genIntro = function () {
   const A = S.condition === 'A';
   const mins = s => `${s / 60}분`;
@@ -919,7 +957,7 @@ SCREENS.gen = function () {
     if (!G.viewStartMs) { G.viewStartMs = Date.now(); log('view_start'); save(); }
     card.innerHTML = `
       <div class="gen-status"><span><b>결과 살펴보기</b></span><span class="timer" id="timer"></span></div>
-      <p class="muted" style="margin-top:0">컨셉 시트와 스케치로 만든 캐릭터입니다. 이 이미지가 최종 캐릭터가 됩니다. 남은 시간 동안 천천히 살펴봐 주세요. 시간이 끝나면 자동으로 넘어갑니다.</p>
+      <p class="muted" style="margin-top:0">${GEN_TEXT.view}</p>
       <img class="final-img" src="${img.image}" alt="생성 결과">${promptDetails()}`;
     countdown(CONFIG.A_VIEW_SEC, G.viewStartMs, () => { G.viewSeconds = Math.round((Date.now() - G.viewStartMs) / 1000); log('view_end', { seconds: G.viewSeconds }); toFinal(img.idx); });
   }
@@ -930,9 +968,9 @@ SCREENS.gen = function () {
     const RD = G.rounds[1], img = okAttempts()[0];
     card.innerHTML = `
       <div class="gen-status"><span><b>수정 요청</b></span><span class="timer" id="timer"></span></div>
-      <p class="muted" style="margin-top:0">1차 결과를 보고, 내가 생각한 인물과 다르거나 바꾸고 싶은 점을 적어 주세요. 시간이 끝나면 적은 내용을 반영해 한 번 더 생성하고, 그 이미지가 최종 캐릭터가 됩니다. 아무것도 적지 않으면 1차 결과가 최종입니다.</p>
+      <p class="muted" style="margin-top:0">${GEN_TEXT.revise}</p>
       <div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${img.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>
-      <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:120px" placeholder="예: 머리를 더 짧게, 코트를 남색으로, 표정을 더 지친 느낌으로, 들고 있는 책을 더 크게"></textarea>
+      <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:120px" placeholder="${GEN_TEXT.revisePh}"></textarea>
       <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">시간이 끝나면 자동으로 진행됩니다 (일찍 끝낼 수 없음)</span></div>
       ${promptDetails()}`;
     const ta = $('#req');
@@ -1088,9 +1126,9 @@ SCREENS.postCov = function () {
     <p class="muted" style="margin:0">0 = 매우 적은 노력 · 100 = 매우 많은 노력</p>${sliderHtml('effort', p.effort)}
   </div>
   <div class="card">
-    <label class="field">이 캐릭터가 '내 것'이라고 느껴진(혹은 느껴지지 않은) 이유가 있다면 자유롭게 적어 주세요. <small>(선택)</small></label>
+    <label class="field">이 캐릭터가 '내 것'이라고 느껴진(혹은 느껴지지 않은) 이유가 있다면 자유롭게 적어 주세요.</label>
     <textarea id="open1">${esc(p.open_ownership)}</textarea>
-    <label class="field">AI 생성 과정에서 기대와 달랐던 점이 있었다면 적어 주세요. <small>(선택)</small></label>
+    <label class="field">AI 생성 과정에서 기대와 달랐던 점이 있었다면 적어 주세요. <small>(없었다면 '없음')</small></label>
     <textarea id="open2">${esc(p.open_process)}</textarea>
   </div>
   <div class="err" id="err"></div><div class="actions"><button id="next">제출</button></div>`);
@@ -1103,6 +1141,7 @@ SCREENS.postCov = function () {
     p.satisfaction = +sat.value; p.ai_contribution = +ac.querySelector('input').value;
     p.quality = +q.querySelector('input').value; p.effort = +e.querySelector('input').value;
     p.open_ownership = $('#open1').value.trim(); p.open_process = $('#open2').value.trim();
+    if (p.open_ownership.length < 2 || p.open_process.length < 2) return $('#err').textContent = '서술 문항 두 개에 모두 답해 주세요 (짧게라도 괜찮습니다).';
     S.completedAt = now();
     log('session_complete');
     go('done');
@@ -1193,7 +1232,7 @@ function showFatal(msg) {
 window.addEventListener('error', e => showFatal(e.message));
 window.addEventListener('unhandledrejection', e => showFatal(e.reason?.message || String(e.reason)));
 window.addEventListener('beforeunload', e => { if (S && !S.completedAt) { e.preventDefault(); e.returnValue = ''; } });
-SCREENS.admin();
+location.hash === '#preview' ? SCREENS.preview() : SCREENS.admin();
 </script>
 </body>
 </html>

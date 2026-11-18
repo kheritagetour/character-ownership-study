@@ -370,7 +370,7 @@ const PROVIDERS = {
     supportsSketch: true,
     async generate(fullPrompt, seed, refDataUrl) {
       const key = SERVER.key || LS.get('openaiKey', '');
-      if (!key) throw new Error('OpenAI API 키가 없음 (팀 서버 연결 확인)');
+      if (!key) throw new Error('OpenAI API 키가 없음 (연구자 화면 ① 이 PC 준비에서 입력)');
       const model = LS.get('openaiModel', CONFIG.OPENAI_MODEL), quality = LS.get('openaiQuality', CONFIG.OPENAI_QUALITY);
       let req;
       if (refDataUrl) {
@@ -553,39 +553,31 @@ SCREENS.admin = async function () {
   const done = new Set(sessions.filter(s => s.completedAt && !s.isTest).map(slotOf));
   const provider = LS.get('provider', 'openai');
   h(`
-  <h1>연구자 설정</h1>
+  <h1>연구자 화면</h1>
   ${DB.mem ? '<div class="card" style="border-color:var(--warn);color:var(--warn)">이 브라우저에서는 데이터 저장소를 쓸 수 없어 <b>임시 저장</b> 중입니다 (새로고침하면 사라짐). 시크릿 모드나 앱 내 브라우저라면 일반 Chrome 창으로 열어 주세요. 세션이 끝나면 바로 CSV로 내보내세요.</div>' : ''}
-  <p class="lead">참가자에게 화면을 넘기기 전에 이 화면에서 세션을 시작하세요. 진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
+  <p class="lead">진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
 
-  <div class="card" style="${getStation() ? '' : 'border-color:var(--warn)'}">
-    <h2 style="margin-top:0">실험 PC 번호 ${getStation() ? `<span class="pill">PC ${getStation()}</span>` : ''}</h2>
-    <p class="muted" style="margin-top:0">PC(크롬 프로필)마다 겹치지 않는 번호를 한 번 정해 주세요 (누가 진행했는지 기록용).</p>
-    <select id="station" style="width:auto"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select>
-  </div>
-
-  ${serverUrl() ? `<div class="card" style="border-color:${SERVER.ok ? 'var(--line)' : 'var(--warn)'}">
-    <h2 style="margin-top:0">팀 서버 ${SERVER.ok ? '<span class="pill">연결됨</span>' : ''}</h2>
-    <p class="muted" style="margin-top:0">본실험은 팀 서버에 연결된 상태에서만 시작됩니다. 서버가 참가자 번호(P01, P02…)와 조건 배정을 모든 PC에서 이어서 나눠 주고, 완료된 세션을 공유 시트·드라이브에 저장합니다. OpenAI 키도 서버에서 받아 옵니다 (화면에 표시되지 않음).</p>
+  <div class="card" style="${getStation() && LS.get('openaiKey', '') ? '' : 'border-color:var(--warn)'}">
+    <h2 style="margin-top:0">① 이 PC 준비 <small class="muted">(처음 한 번)</small></h2>
     <div class="grid2">
-      ${CONFIG.SERVER_URL ? '' : `<div><label class="field">서버 주소</label><input type="text" id="srvUrl" value="${esc(LS.get('serverUrl', ''))}" placeholder="https://script.google.com/macros/s/…/exec"></div>`}
-      <div><label class="field">팀 코드</label><input type="password" id="srvCode" value="${esc(LS.get('teamCode', ''))}"></div>
+      <div><label class="field">실험 PC 번호 <small>(팀원끼리 겹치지 않게)</small></label>
+        <select id="station"><option value="">선택</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(k => `<option value="${k}" ${getStation() === k ? 'selected' : ''}>PC ${k}</option>`).join('')}</select></div>
+      <div><label class="field">OpenAI API 키 <small id="keyState">${LS.get('openaiKey', '') ? '✓ 저장됨' : '붙여넣으면 이 PC에 저장'}</small></label>
+        <input type="password" id="okey" value="${esc(LS.get('openaiKey', ''))}" placeholder="sk-..."></div>
     </div>
-    <div class="actions" style="justify-content:flex-start;align-items:center"><button class="secondary" id="srvConnect">연결</button>
-      <span class="${SERVER.ok ? 'muted' : 'err'}">${SERVER.ok ? `다음 본실험 번호 <b>${esc(SERVER.status?.nextP || '')}</b> · 지금까지 배정 ${SERVER.status?.assignedP ?? 0}명 · 서버 저장 ${SERVER.status?.saved ?? 0}건 · OpenAI 키 ${SERVER.key ? '받음 ✓' : '<b>없음</b> (서버 설정 확인)'}` : esc(SERVER.error || '연결 안 됨')}</span></div>
-    ${(() => { const un = sessions.filter(s => s.completedAt && !s.syncedAt && !s.handoff).length; return un ? `<p style="color:var(--warn);margin:6px 0 0">서버로 보내지 못한 완료 세션 ${un}개 <button class="secondary" id="srvResend" style="padding:4px 10px">다시 보내기</button></p>` : ''; })()}
-  </div>` : `<details class="card"><summary class="muted" style="cursor:pointer">(선택) 팀 서버 사용</summary><p class="muted">server/Code.gs를 배포했을 때만 주소를 넣으세요. 넣으면 번호·배정·저장을 서버가 처리합니다.</p><input type="text" id="srvUrl" placeholder="https://script.google.com/macros/s/…/exec"> <input type="password" id="srvCode" placeholder="팀 코드" style="margin-top:6px"><div class="actions" style="justify-content:flex-start"><button class="secondary" id="srvConnect">연결</button></div></details>`}
-
-  <div class="card">
-    <h2 style="margin-top:0">OpenAI 키 ${SERVER.key || LS.get('openaiKey', '') ? '<span class="pill">이 PC에 설정됨</span>' : ''}</h2>
-    ${pendingKeyLink() ? `<p><b>팀 키 링크로 열었습니다.</b> 팀 코드를 입력하면 이 PC에 키가 설정됩니다.</p>
-      <div class="grid2"><input type="password" id="klCode" placeholder="팀 코드"><button id="klApply">키 받기</button></div><div class="err" id="klErr"></div>`
-    : `<p class="muted" style="margin-top:0">키 주인: 아래 「새 세션」의 키 칸에 키를 넣은 뒤, 팀 코드로 <b>팀 키 링크</b>를 만들어 팀원에게 보내세요. 링크에는 팀 코드로 암호화된 키만 들어 있어, 팀 코드 없이는 열 수 없습니다. 팀원은 링크를 열고 팀 코드만 입력하면 됩니다.</p>
-      <div class="grid2"><input type="password" id="klMakeCode" placeholder="팀 코드 (팀원과 따로 공유)"><button class="secondary" id="klMake">팀 키 링크 만들기 (복사)</button></div><div class="muted" id="klOut"></div>`}
+    <div class="actions" style="justify-content:flex-start"><button class="secondary" id="testGen">생성 연결 테스트</button></div>
+    <div id="testOut" class="muted"></div>
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">새 세션</h2>
-    <div class="grid2">
+    <h2 style="margin-top:0">② 참가자 세션 시작</h2>
+    <p style="margin:0 0 6px">다음 참가자 번호 <b style="font-size:20px">${getStation() ? nextPid(sessions, false) : '—'}</b> <span class="muted">· 조건과 세계관은 사전 설문 뒤 자동으로 정해집니다.</span></p>
+    <label style="display:block;margin-top:10px"><input type="checkbox" id="isTest"> 테스트 세션 (번호 ${getStation() ? nextPid(sessions, true) : 'T…'}, 분석에서 제외)</label>
+    <div class="actions" style="justify-content:flex-start">
+      <button id="start" style="font-size:17px;padding:12px 24px">세션 시작 → 참가자에게 화면 전달</button>
+    </div>
+    <details style="margin-top:14px"><summary class="muted" style="cursor:pointer">고급 설정 (테스트할 때만 바꾸세요)</summary>
+      <div class="grid2" style="margin-top:8px">
       <div><label class="field">창작 경험 <small>(자동: 사전 설문의 그림·창작 경험 응답으로 층을 정하고, 그 층 배정표의 다음 ID·조건·세계관을 배정)</small></label>
         <select id="stratum"><option value="auto">자동 · 사전 설문 응답으로 결정 (권장)</option>${STRATA.map(st => `<option value="${st.id}">수동 · ${st.id} ${st.label}</option>`).join('')}</select>
       </div>
@@ -599,28 +591,21 @@ SCREENS.admin = async function () {
       <div><label class="field">세계관 <small>(배정표 기준 자동)</small></label>
         <select id="world">${WORLDS.map(w => `<option value="${w.id}">${w.short} · ${w.title}</option>`).join('')}</select>
       </div>
-      <div><label class="field">이미지 생성 모델</label>
+      <div><label class="field">이미지 생성 모델 <small>(본실험: OpenAI · ${CONFIG.OPENAI_MODEL} · ${CONFIG.OPENAI_QUALITY} 고정)</small></label>
         <select id="provider">${Object.entries(PROVIDERS).map(([k, p]) => `<option value="${k}" ${k === provider ? 'selected' : ''}>${p.label}</option>`).join('')}</select>
       </div>
-      <div id="keyBox" style="display:${provider === 'openai' ? 'block' : 'none'}"><label class="field">OpenAI API Key ${SERVER.key ? '<small>(팀 서버 키 사용 중 ✓ — 입력 불필요)</small>' : '<small>(팀 서버 없이 테스트할 때만, 이 브라우저에만 저장)</small>'}</label>
-        <input type="password" id="okey" value="${esc(LS.get('openaiKey', ''))}" placeholder="${SERVER.key ? '팀 서버 키 사용' : 'sk-...'}" style="display:${SERVER.key ? 'none' : 'block'}">
-        <div class="grid2" style="margin-top:8px">
+      <div id="keyBox" style="display:${provider === 'openai' ? 'block' : 'none'}"><label class="field">OpenAI 모델 · 화질</label>
+        <div class="grid2">
           <select id="omodel">${['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'].map(m => `<option ${LS.get('openaiModel', CONFIG.OPENAI_MODEL) === m ? 'selected' : ''}>${m}</option>`).join('')}</select>
           <select id="oquality">${[['low', '낮음 (빠름·저렴)'], ['medium', '중간 (권장)'], ['high', '높음 (느림·비쌈)']].map(([v, t]) => `<option value="${v}" ${LS.get('openaiQuality', CONFIG.OPENAI_QUALITY) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
         </div>
       </div>
-    </div>
-    <label style="display:block;margin-top:12px"><input type="checkbox" id="isTest"> 테스트/파일럿 세션 (분석 내보내기에서 표시됨)</label>
-    <div class="actions">
-      <button class="secondary" id="testGen">생성 연결 테스트</button>
-      <button class="secondary" id="pvOpen">전체 문항 미리보기</button>
-      <button id="start">세션 시작 → 참가자에게 화면 전달</button>
-    </div>
-    <div id="testOut" class="muted"></div>
+      </div>
+    </details>
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">세션 목록 (${sessions.length})</h2>
+    <h2 style="margin-top:0">③ 세션 목록 · 데이터 내보내기 (${sessions.length})</h2>
     <table><thead><tr><th>ID</th><th>경험</th><th>조건</th><th>세계관</th><th>시작</th><th>상태</th><th>생성 수</th><th>PO 평균</th><th></th></tr></thead><tbody>
     ${sessions.map(s => { const f = flatten(s); return `<tr>
       <td>${esc(s.pid || '(배정 전)')}${s.slot ? ` <small class="muted">${esc(s.slot)}</small>` : ''}${s.isTest ? ' <span class="pill">test</span>' : ''}${s.station ? ` <small class="muted">PC${s.station}</small>` : ''}${s.handoff ? ' <span class="pill">인계</span>' : ''}${s.syncedAt ? ' <small title="서버 저장됨">☁</small>' : ''}</td><td>${esc(s.stratum || '—')}</td><td>${s.condition || '—'}</td><td>${s.world ? getWorld(s.world).short : '—'}</td>
@@ -631,19 +616,19 @@ SCREENS.admin = async function () {
     </tbody></table>
     <div class="actions">
       <button class="secondary" id="expCsv">CSV 내보내기 (분석용)</button>
+      <button class="secondary" id="pvOpen">전체 문항 미리보기</button>
       <button class="secondary" id="expJson">전체 JSON 내보내기 (이미지 포함)</button>
       <label class="secondary" style="display:inline-flex;align-items:center;border:1px solid var(--navy);border-radius:8px;padding:10px 18px;cursor:pointer;color:var(--navy)">JSON 가져오기<input type="file" id="impJson" accept=".json" style="display:none"></label>
     </div>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0">무선배정표 <span class="muted">(seed ${asg.seed})</span></h2>
+  <details class="card"><summary class="muted" style="cursor:pointer">무선배정표 보기 (seed ${asg.seed})</summary>
     <p class="muted">창작 경험 층마다 4명 단위 블록 무선배정 (조건 × 세계관 균형).</p>
     ${STRATA.map(st => { const rows = asg.table.filter(r => r.stratum === st.id), nx = rows.find(r => !done.has(r.pid)); return `
       <p style="margin:12px 0 4px"><b>${st.id} · ${st.label}</b> <span class="muted">— 다음 배정: ${nx ? `${nx.pid} → ${nx.condition} · ${getWorld(nx.world).short}` : '모두 완료'}</span></p>
       <div style="overflow-x:auto"><table><tbody><tr>${rows.map(r => `<td style="text-align:center;white-space:nowrap;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b><br><small>${getWorld(r.world).short}</small></td>`).join('')}</tr></tbody></table></div>`; }).join('')}
     <div class="actions"><button class="danger" id="reseed">배정표 다시 만들기</button></div>
-  </div>`);
+  </details>`);
 
   const pidSel = $('#pid'), condSel = $('#cond'), worldSel = $('#world'), stSel = $('#stratum');
   const syncCond = () => {
@@ -661,7 +646,7 @@ SCREENS.admin = async function () {
   };
   stSel.onchange = fillPids; pidSel.onchange = syncCond; fillPids();
   $('#provider').onchange = e => { LS.set('provider', e.target.value); $('#keyBox').style.display = e.target.value === 'openai' ? 'block' : 'none'; };
-  $('#okey')?.addEventListener('change', e => LS.set('openaiKey', e.target.value.trim()));
+  $('#okey').addEventListener('input', e => { LS.set('openaiKey', e.target.value.trim()); $('#keyState').textContent = e.target.value.trim() ? '✓ 저장됨' : '붙여넣으면 이 PC에 저장'; });
   $('#omodel').onchange = e => LS.set('openaiModel', e.target.value);
   $('#oquality').onchange = e => LS.set('openaiQuality', e.target.value);
   $('#station').onchange = e => {
@@ -718,14 +703,14 @@ SCREENS.admin = async function () {
   $('#start').onclick = async () => {
     const auto = stSel.value === 'auto';
     const isTest = $('#isTest').checked, custom = pidSel.value === '__custom';
-    if (!getStation()) return alert('먼저 위에서 실험 PC 번호를 정해 주세요.');
+    if (!getStation()) return alert('먼저 ① 이 PC 준비에서 실험 PC 번호를 골라 주세요.');
     // 본실험은 모든 PC에서 같은 생성 설정이어야 함
     if (!isTest && serverUrl() && !SERVER.ok) return alert('팀 서버가 설정돼 있지만 연결되지 않았습니다. 위의 「팀 서버」에서 연결해 주세요.');
     if (!isTest && SERVER.ok && !auto) return alert('본실험은 창작 경험 「자동」으로만 시작합니다 (번호·배정을 서버에서 받음). 수동 지정은 테스트로만 가능합니다.');
     if (!isTest) {
       const pv = $('#provider').value, m = LS.get('openaiModel', CONFIG.OPENAI_MODEL), qy = LS.get('openaiQuality', CONFIG.OPENAI_QUALITY);
       if (pv !== 'openai' || m !== CONFIG.OPENAI_MODEL || qy !== CONFIG.OPENAI_QUALITY)
-        return alert(`본실험은 모든 PC에서 OpenAI · ${CONFIG.OPENAI_MODEL} · ${CONFIG.OPENAI_QUALITY} 로 진행합니다. 이미지 생성 모델 설정을 맞춰 주세요. (다른 설정은 '테스트/파일럿 세션'으로만 가능)`);
+        return alert(`본실험은 모든 PC에서 OpenAI · ${CONFIG.OPENAI_MODEL} · ${CONFIG.OPENAI_QUALITY} 로 진행합니다. 「고급 설정」의 이미지 생성 모델을 맞춰 주세요. (다른 설정은 테스트 세션으로만 가능)`);
     }
     const slot = auto || custom ? null : pidSel.value;
     const pid = auto ? null : custom ? $('#pidCustom').value.trim() : nextPid(sessions, isTest);
@@ -735,7 +720,7 @@ SCREENS.admin = async function () {
     if (row && (row.condition !== condSel.value || row.world !== worldSel.value) && !confirm(`배정표(${row.condition} · ${getWorld(row.world).short})와 다르게 (${condSel.value} · ${getWorld(worldSel.value).short}) 시작합니다. 계속할까요?`)) return;
     LS.set('openaiKey', $('#okey')?.value.trim() || LS.get('openaiKey', ''));
     const prov = $('#provider').value;
-    if (prov === 'openai' && !SERVER.key && !LS.get('openaiKey', '')) return alert('OpenAI 키가 없습니다. 팀 서버에 연결하거나(권장), 테스트라면 키를 직접 입력하거나 Mock을 선택하세요.');
+    if (prov === 'openai' && !SERVER.key && !LS.get('openaiKey', '')) return alert('① 이 PC 준비에서 OpenAI API 키를 붙여넣어 주세요. (키 없이 흐름만 볼 때는 테스트 세션 + 고급 설정에서 Mock)');
     const ts = Date.now();
     S = {
       id: `${pid || 'auto'}_${ts}`, studyId: CONFIG.STUDY_ID, station: getStation(), pid, slot, autoAssign: auto,

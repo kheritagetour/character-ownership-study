@@ -830,7 +830,10 @@ async function autoAssign() {
   const asg = getAssignment();
   const others = (await DB.getAll()).filter(s => s.id !== S.id);
   const used = new Set(others.filter(s => !s.isTest && s.pid).map(slotOf));   // 테스트 세션은 배정 칸을 쓰지 않음
-  const row = asg.table.find(r => r.stratum === st && !used.has(r.pid))
+  // 테스트는 본실험 칸을 소모하지 않되, 매번 같은 조건만 나오지 않도록 남은 칸을 차례로 돌아가며 (A·B 모두 체험 가능)
+  const free = asg.table.filter(r => r.stratum === st && !used.has(r.pid));
+  const nTest = others.filter(s => s.isTest && s.stratum === st && s.assignedBy !== 'server').length;
+  const row = (S.isTest && free.length ? free[nTest % free.length] : null) || asg.table.find(r => r.stratum === st && !used.has(r.pid))
     || (() => { const rows = asg.table.filter(r => r.stratum === st); return { ...rows[rows.length - 1], pid: `${st}X${String(Date.now()).slice(-4)}`, overflow: true }; })();   // 배정표 소진 시 마지막 칸 조건으로 임시 칸
   const pid = nextPid(others, !!S.isTest);
   await DB.del(S.id);

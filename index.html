@@ -64,6 +64,8 @@
   .timer { font-variant-numeric: tabular-nums; font-weight: 700; }
   .timer.low { color: var(--warn); }
   .attempts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+  .revise-grid { display: grid; grid-template-columns: 200px 1fr; gap: 14px; align-items: start; margin-bottom: 4px; }
+  @media (max-width: 1100px) { .revise-grid { grid-template-columns: 1fr; } .revise-grid .attempt { max-width: 220px; } }
   .attempt { border: 2px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; font-size: 12.5px; }
   .attempt img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 4px; display: block; background: #eee; }
   .attempt.selectable { cursor: pointer; }
@@ -93,6 +95,7 @@
  * ===================================================================== */
 const CONFIG = {
   STUDY_ID: 'GCT573-T2-ownership',
+  APP_VERSION: '2026-11-20c',      // 고칠 때마다 바꿈 → 열어 둔 옛 탭이면 연구자 화면에 새로고침 안내
   // 여러 PC 진행 (기본: 서버 없음): PC마다 번호 P{PC}-01…, 배정은 PC(사이트)별 층화 블록 무선배정(시드 ASSIGN_SEED×10+PC),
   // 데이터는 PC별 CSV를 합쳐 분석. API 키는 '팀 키 링크'(팀 코드로 암호화)로 전달.
   // (선택) 팀 서버(server/Code.gs)를 배포해 SERVER_URL을 넣으면 번호·배정·저장을 서버가 한 곳에서 처리
@@ -438,7 +441,8 @@ let S = null;          // 현재 세션
 let timerHandle = null;
 const now = () => new Date().toISOString();
 function log(type, data) { if (S) S.events.push({ t: now(), ms: Date.now(), type, ...(data ? { data } : {}) }); }
-async function save() { if (S) await DB.put(S); }
+// 저장 실패(저장 공간 등)가 진행을 막지 않도록: 실패해도 화면은 계속, 오류는 세션에 기록
+async function save() { if (!S) return; try { await DB.put(S); } catch (e) { console.error('save failed', e); S.saveError = String(e.message || e); } }
 
 const FLOW = ['consent', 'pre', 'world', 'concept', 'sketch', 'genIntro', 'gen', 'postPO', 'postIA', 'postAU', 'postCov', 'done'];
 const STEP_LABEL = { consent: '동의', pre: '사전 설문', world: '과제 상황', concept: '컨셉 시트', sketch: '스케치', genIntro: '생성 안내', gen: 'AI 생성', postPO: '사후 설문 1/4', postIA: '사후 설문 2/4', postAU: '사후 설문 3/4', postCov: '사후 설문 4/4', done: '완료' };
@@ -590,7 +594,8 @@ SCREENS.admin = async function () {
   h(`
   <h1>연구자 화면</h1>
   ${DB.mem ? '<div class="card" style="border-color:var(--warn);color:var(--warn)">이 브라우저에서는 데이터 저장소를 쓸 수 없어 <b>임시 저장</b> 중입니다 (새로고침하면 사라짐). 시크릿 모드나 앱 내 브라우저라면 일반 Chrome 창으로 열어 주세요. 세션이 끝나면 바로 CSV로 내보내세요.</div>' : ''}
-  <p class="lead">진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>.</p>
+  <div id="staleBox"></div>
+  <p class="lead">진행 중 연구자 화면으로 돌아오려면 <b>Ctrl+Shift+A</b>. <small class="muted">버전 ${CONFIG.APP_VERSION}</small></p>
 
   <div class="card" style="${getStation() && LS.get('openaiKey', '') ? '' : 'border-color:var(--warn)'}">
     <h2 style="margin-top:0">① 이 PC 준비 <small class="muted">(처음 한 번)</small></h2>
@@ -606,10 +611,11 @@ SCREENS.admin = async function () {
 
   <div class="card">
     <h2 style="margin-top:0">② 참가자 세션 시작</h2>
-    <p style="margin:0 0 6px">다음 참가자 번호 <b style="font-size:20px">${getStation() ? nextPid(sessions, false) : '—'}</b> <span class="muted">· 조건과 세계관은 사전 설문 뒤 자동으로 정해집니다.</span></p>
+    <p style="margin:0 0 6px">다음 참가자 번호 <b style="font-size:20px">${getStation() ? nextPid(sessions, false) : '—'}</b> <span class="muted">· 조건과 세계관은 사전 설문 뒤 자동으로 정해집니다 (본실험은 직접 고를 수 없음).</span></p>
+    <p class="muted" style="margin:0 0 6px;font-size:13.5px">이 PC 본실험 완료 — ${STRATA.map(st => { const d = sessions.filter(s => !s.isTest && s.completedAt && s.stratum === st.id), nx = pickBalanced(asg, st.id, sessions); return `${st.id}층(${st.label}): A ${d.filter(s => s.condition === 'A').length} · B ${d.filter(s => s.condition === 'B').length}${nx ? ` → 다음 <b>${nx.condition}</b>` : ''}`; }).join(' &nbsp;|&nbsp; ')}<br>층은 사전 설문 응답(그림·창작 경험)으로 정해지므로, 다음 참가자가 어느 층인지에 따라 A/B가 달라집니다.</p>
     <label style="display:block;margin-top:10px"><input type="checkbox" id="isTest"> 테스트 세션 (번호 ${getStation() ? nextPid(sessions, true) : 'T…'}, 분석에서 제외)</label>
     <div id="testCondBox" style="display:none;margin:6px 0 0 24px">테스트 조건:
-      ${[['', '자동 (돌아가며)'], ['A', 'A · 1회 생성'], ['B', 'B · 수정 요청 포함']].map(([v, t]) => `<label style="margin-right:12px;white-space:nowrap"><input type="radio" name="testCond" value="${v}" ${v === LS.get('testCond', '') ? 'checked' : ''}> ${t}</label>`).join('')}
+      ${[['', '자동 (돌아가며)'], ['A', 'A · 1회 생성'], ['B', 'B · 프롬프트 수정 포함']].map(([v, t]) => `<label style="margin-right:12px;white-space:nowrap"><input type="radio" name="testCond" value="${v}" ${v === LS.get('testCond', '') ? 'checked' : ''}> ${t}</label>`).join('')}
     </div>
     <div class="actions" style="justify-content:flex-start">
       <button id="start" style="font-size:17px;padding:12px 24px">세션 시작 → 참가자에게 화면 전달</button>
@@ -715,6 +721,12 @@ SCREENS.admin = async function () {
     let ok = 0; for (const s of sessions.filter(s => s.completedAt && !s.syncedAt && !s.handoff)) if (await syncSession(s)) ok++;
     alert(`${ok}개 세션을 서버로 보냈습니다.`); await connectServer(); SCREENS.admin();
   });
+  // 열어 둔 탭이 옛 버전이면 안내 (GitHub Pages는 고친 뒤에도 열린 탭을 바꾸지 않음)
+  fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' }).then(r => r.text()).then(t => {
+    const v = t.match(/APP_VERSION: '([^']+)'/)?.[1];
+    if (v && v !== CONFIG.APP_VERSION && $('#staleBox')) $('#staleBox').innerHTML = `<div class="card" style="border-color:var(--warn)"><b style="color:var(--warn)">새 버전(${esc(v)})이 있습니다.</b> 지금 화면은 옛 버전(${CONFIG.APP_VERSION})입니다. 참가자 세션 전에 새로고침해 주세요. <button id="reloadNew" style="margin-left:8px">새로고침</button></div>`;
+    $('#reloadNew')?.addEventListener('click', () => location.reload());
+  }).catch(() => {});
   $('#pvOpen').onclick = () => { location.hash = 'preview'; SCREENS.preview(); };
   $('#testGen').onclick = async () => {
     if (!SERVER.key) LS.set('openaiKey', $('#okey')?.value.trim() || '');
@@ -1140,9 +1152,11 @@ SCREENS.gen = function () {
     card.innerHTML = `
       <div class="gen-status"><span><b>프롬프트 수정</b></span><span class="timer" id="timer"></span></div>
       <p class="muted" style="margin-top:0">${GEN_TEXT.revise}</p>
-      <div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${img.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>
-      <label class="field" style="margin-top:0">AI에게 보낼 프롬프트 <small>(직접 고쳐 주세요)</small></label>
-      <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:260px;font-size:14px;line-height:1.6" spellcheck="false"></textarea>
+      <div class="revise-grid">
+        <div class="attempt"><img src="${img.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>
+        <div><label class="field" style="margin-top:0">AI에게 보낼 프롬프트 <small>(직접 고쳐 주세요)</small></label>
+        <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:340px;font-size:14px;line-height:1.6" spellcheck="false"></textarea></div>
+      </div>
       <div class="gen-status" style="margin-top:6px"><span><span id="chars" class="muted"></span> <button class="secondary" id="resetPrompt" style="padding:4px 10px;font-size:13px">처음 프롬프트로 되돌리기</button></span><span class="muted">시간이 끝나면 자동으로 진행됩니다 (일찍 끝낼 수 없음)</span></div>
       <p class="muted" style="font-size:13px">${GEN_TEXT.revisePh}</p>`;
     const ta = $('#req');
@@ -1150,7 +1164,7 @@ SCREENS.gen = function () {
     const upd = () => { const d = editDistance(G.basePrompt, ta.value.trim()); $('#chars').textContent = d ? `처음 프롬프트에서 ${d}자 바뀜` : '아직 고치지 않음'; };
     ta.addEventListener('input', () => { RD.editedPrompt = ta.value; RD.inputEvents++; upd(); });
     $('#resetPrompt').onclick = () => { if (confirm('고친 내용을 지우고 처음 프롬프트로 되돌릴까요?')) { ta.value = G.basePrompt; RD.editedPrompt = ta.value; RD.resets = (RD.resets || 0) + 1; log('prompt_reset'); upd(); } };
-    upd(); ta.focus();
+    upd(); window.scrollTo(0, 0); ta.focus({ preventScroll: true });
     countdown(CONFIG.REVISION_SEC, RD.startMs, () => {
       const edited = ta.value.trim(), dist = editDistance(G.basePrompt, edited);
       Object.assign(RD, { editedPrompt: edited, editDistance: dist, endedAt: now(), writeSeconds: Math.round((Date.now() - RD.startMs) / 1000) });

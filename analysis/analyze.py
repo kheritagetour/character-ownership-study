@@ -371,7 +371,7 @@ def main():
     rev = [r for r in bro if r.get("b_revised") == "1"]
     w(f"\n**B 조건 수정 여부**: {len(rev)} / {len(bro)}명이 수정 요청을 적어 재생성 (나머지는 비워 두어 1차가 최종).")
     if rev:
-        for v in ["revision_chars", "revision_input_events", "revision_seconds"]:
+        for v in ["revision_edit_distance", "revision_prompt_chars", "revision_input_events", "revision_seconds"]:
             y = col(rev, v); y = y[~np.isnan(y)]
             if len(y):
                 w(f"- {v}: M = {y.mean():.1f}" + (f", SD = {y.std(ddof=1):.1f}" if len(y) > 1 else "") + f" (n={len(y)})")

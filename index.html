@@ -101,17 +101,17 @@ const CONFIG = {
   N_PER_STRATUM: 16,               // 창작 경험 층(있음/없음)별 배정표 크기 (4명 블록 × 4). 목표는 층별 8명이지만, 모집이 한쪽으로 몰려도 배정표가 바닥나지 않도록 여유 있게 (블록 단위라 어디서 끊겨도 4명마다 균형)
   // 1차 이미지는 A/B 모두 컨셉 시트 + 스케치로 자동 생성 (참가자가 프롬프트를 따로 쓰지 않음 — 2차 파일럿 피드백)
   // 1차 결과를 보는 시간을 A/B 동일하게 고정: A는 살펴보기만, B는 같은 시간 동안 수정 요청 작성
-  REVISION_SEC: 120,               // B: 1차 결과를 보며 수정 요청을 쓰는 고정 시간 (일찍 끝낼 수 없음, 비워 두면 1차가 최종)
+  REVISION_SEC: 120,               // B: 1차 결과를 보며 1차 프롬프트를 직접 고치는 고정 시간 (일찍 끝낼 수 없음, 안 고치면 1차가 최종)
   A_VIEW_SEC: 120,                 // A: 1차(=최종) 결과를 살펴보는 고정 시간. REVISION_SEC와 같게 유지 (0이면 바로 최종 화면)
-  REVISION_MIN_CHARS: 2,           // 이보다 짧은 수정 요청은 "수정 안 함"으로 처리
-  REVISION_MAX_CHARS: 300,
+  REVISION_MIN_CHARS: 2,           // 1차 프롬프트에서 바뀐 글자 수(편집 거리)가 이보다 적으면 "수정 안 함"으로 처리
+  REVISION_MAX_CHARS: 2000,        // 수정한 프롬프트 전체 길이 상한
   USE_SKETCH: true,                // 손 스케치를 이미지 입력으로 함께 전달 (OpenAI·Mock만 지원)
   // 스케치를 함께 보낼 때 프롬프트 앞에 붙는 고정 지시문 (참가자에게 보이지 않음, A/B 동일)
   SKETCH_INSTRUCTION: 'Use the attached rough hand-drawn sketch as the primary reference for the character\'s pose, silhouette, proportions and key shapes. Keep the sketch\'s composition, and turn it into a finished character illustration that follows this description: ',
   // 컨셉 시트 → 프롬프트 변환 시 맨 앞에 붙는 고정 문구 (A/B 동일, LLM 없이 템플릿으로 변환 → 재현 가능)
   AUTO_PROMPT_INTRO: '아래 캐릭터 설정을 가능한 한 충실하게 반영해, 외형·표정·의상·분위기·핵심 특징이 잘 드러나는 캐릭터 일러스트를 그려 주세요.',
-  // B 수정 생성: 1차 이미지를 참고 이미지로 보내고 수정 요청만 반영 (OpenAI·Mock)
-  REVISION_INSTRUCTION: 'Revise the attached character illustration. Keep the same character, pose, composition and overall design, and apply only the following changes requested by the creator: ',
+  // B 수정 생성: 1차 이미지를 참고 이미지로 보내고, 참가자가 고친 프롬프트와 원래 프롬프트의 차이만 반영 (OpenAI·Mock)
+  REVISION_INSTRUCTION: 'Revise the attached character illustration. The creator edited the original description below into the updated description. Keep the same character, pose, composition and overall design, and change only what differs between the two descriptions.',
   CONCEPT_SUGGESTED_SEC: 360,      // 컨셉 시트 권장 시간 (안내용, 강제 X) — 전체 30분 이내 목표
   SKETCH_SUGGESTED_SEC: 180,       // 스케치 권장 시간 (안내용, 강제 X)
   IMAGE: { width: 768, height: 1024 },  // 동일 출력 포맷/비율 (3:4)
@@ -519,6 +519,22 @@ const TRAIT_GROUPS = [
 const conceptValue = (c, f) => Array.isArray(c[f.key]) ? c[f.key].join(', ') : c[f.key];
 
 /* 컨셉 시트 → 1차 생성 프롬프트 (고정 템플릿, A/B 동일). 성격은 표정·자세·분위기로 드러나도록 안내 */
+/* B 2차 생성 프롬프트: 원래 프롬프트 + 참가자가 고친 프롬프트 (1차 이미지와 함께 전송) */
+function revisionPrompt(orig, edited) {
+  return `${CONFIG.REVISION_INSTRUCTION}\n\nOriginal description:\n${orig}\n\nUpdated description:\n${edited}${CONFIG.STYLE_SUFFIX}`;
+}
+/* 편집 거리 (글자 단위) — 1차 프롬프트를 얼마나 고쳤는지 */
+function editDistance(a, b) {
+  a = [...a]; b = [...b];
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 function buildPrompt(c, w = getWorld()) {
   const v = k => { const f = CONCEPT_FIELDS.find(f => f.key === k); return String((f && conceptValue(c, f)) || '').trim(); };
   const line = (label, ...keys) => { const t = keys.map(v).filter(x => x && x !== '모름' && x !== '없음').join(', '); return t ? `- ${label}: ${t}` : null; };
@@ -703,8 +719,8 @@ SCREENS.admin = async function () {
       out.innerHTML = `1단계 성공 (${s1}초${sketch ? ', 스케치 입력' : ''}) · 2단계(B 수정: 1차 이미지 입력) 생성 중…<br>${sketch ? thumb(sketch) : ''}${thumb(img)}`;
       // B 수정 경로도 확인: 1차 결과 이미지를 입력으로 보내 요청 부분만 바꾸기
       const t1 = Date.now();
-      const img2 = await p.generate(p.supportsSketch ? `${CONFIG.REVISION_INSTRUCTION}망토를 빨간색으로 바꿔 주세요\n\nOriginal character description:\n${base}${CONFIG.STYLE_SUFFIX}` : base + ', 빨간 망토' + CONFIG.STYLE_SUFFIX, 43, p.supportsSketch ? img : null);
-      out.innerHTML = `성공 — 1단계 ${s1}초${sketch ? ' (스케치 입력)' : ''} · 2단계 ${((Date.now() - t1) / 1000).toFixed(1)}초 (1차 이미지 입력, "망토를 빨간색으로")<br>${sketch ? thumb(sketch) : ''}${thumb(img)}${thumb(img2)}<br><span class="muted">확인: 2단계 이미지가 같은 캐릭터이고 망토만 빨갛게 바뀌었는지</span>`;
+      const img2 = await p.generate(p.supportsSketch ? revisionPrompt(base, base.replace('남색 망토', '빨간 망토')) : base + ', 빨간 망토' + CONFIG.STYLE_SUFFIX, 43, p.supportsSketch ? img : null);
+      out.innerHTML = `성공 — 1단계 ${s1}초${sketch ? ' (스케치 입력)' : ''} · 2단계 ${((Date.now() - t1) / 1000).toFixed(1)}초 (1차 이미지 입력, 프롬프트의 "남색 망토" → "빨간 망토")<br>${sketch ? thumb(sketch) : ''}${thumb(img)}${thumb(img2)}<br><span class="muted">확인: 2단계 이미지가 같은 캐릭터이고 망토만 빨갛게 바뀌었는지</span>`;
     } catch (e) { out.innerHTML = `<span style="color:var(--warn)">실패: ${esc(e.message)}</span>`; }
   };
   $('#start').onclick = async () => {
@@ -783,7 +799,7 @@ SCREENS.preview = function () {
   ['A', 'B'].forEach(c => { S.condition = c; grab(`6. 생성 안내 · 조건 ${c}`, SCREENS.genIntro); });
   parts.push(`<section class="card" style="border-top:4px solid var(--navy)"><p style="margin:0 0 8px"><span class="pill">7. AI 생성</span></p>
     <p><b>A</b> (결과 보기 ${CONFIG.A_VIEW_SEC / 60}분): ${esc(GEN_TEXT.view)}</p>
-    <p><b>B</b> (수정 요청 ${CONFIG.REVISION_SEC / 60}분, 최대 ${CONFIG.REVISION_MAX_CHARS}자): ${esc(GEN_TEXT.revise)}<br><small class="muted">입력 칸 예시: ${esc(GEN_TEXT.revisePh)}</small></p></section>`);
+    <p><b>B</b> (프롬프트 수정 ${CONFIG.REVISION_SEC / 60}분): ${esc(GEN_TEXT.revise)}<br><small class="muted">입력 칸에는 1차 프롬프트 전문이 미리 채워져 있음. 수정 예: ${esc(GEN_TEXT.revisePh)}</small></p></section>`);
   grab('8. 사후 설문 1/4', SCREENS.postPO);
   grab('9. 사후 설문 2/4', SCREENS.postIA);
   grab('10. 사후 설문 3/4', SCREENS.postAU);
@@ -1029,23 +1045,23 @@ SCREENS.sketch = function () {
 /* ---------- 6. Generation intro (조건별 안내) ---------- */
 const GEN_TEXT = {
   view: '컨셉 시트와 스케치로 만든 캐릭터입니다. 이 이미지가 최종 캐릭터가 됩니다. 남은 시간 동안 천천히 살펴봐 주세요. 시간이 끝나면 자동으로 넘어갑니다.',
-  revise: '1차 결과를 보고, 내가 생각한 인물과 다르거나 바꾸고 싶은 점을 적어 주세요. 시간이 끝나면 적은 내용을 반영해 한 번 더 생성하고, 그 이미지가 최종 캐릭터가 됩니다. 아무것도 적지 않으면 1차 결과가 최종입니다.',
-  revisePh: '예: 머리를 더 짧게, 코트를 남색으로, 표정을 더 지친 느낌으로, 들고 있는 책을 더 크게',
+  revise: '아래는 1차 이미지를 만들 때 AI에게 보낸 프롬프트입니다. 1차 결과를 보고, 내가 생각한 인물과 다르거나 바꾸고 싶은 부분을 이 프롬프트에서 직접 고쳐 주세요 (내용을 바꾸거나, 지우거나, 새로 써 넣을 수 있습니다). 시간이 끝나면 고친 프롬프트로 한 번 더 생성하고, 그 이미지가 최종 캐릭터가 됩니다. 고치지 않으면 1차 결과가 최종입니다.',
+  revisePh: '예: "머리카락: 더벅머리" → "머리카락: 짧게 깎은 머리", "옷:" 줄에 "남색 코트" 추가, 성격 줄에 "지친 표정" 추가',
 };
 SCREENS.genIntro = function () {
   const A = S.condition === 'A';
   const mins = s => `${s / 60}분`;
   h(`<h1>AI 캐릭터 생성 안내</h1>
   <div class="card">
-    <p>이제 AI 이미지 생성 도구가 <b>여러분이 작성한 컨셉 시트와 스케치</b>를 바탕으로 캐릭터 이미지를 만듭니다. 프롬프트를 따로 작성할 필요는 없습니다.</p>
+    <p>이제 AI 이미지 생성 도구가 <b>여러분이 작성한 컨셉 시트와 스케치</b>를 바탕으로 캐릭터 이미지를 만듭니다. 컨셉 시트 내용은 자동으로 프롬프트(AI에게 보내는 글)로 바뀌므로, 처음부터 프롬프트를 쓸 필요는 없습니다.</p>
     <p><b>진행 순서</b></p>
     <ol>
       <li>버튼을 누르면 컨셉 시트와 스케치로 <b>이미지가 생성</b>됩니다 (1분 정도).</li>
       ${A
         ? `<li>생성된 이미지가 <b>최종 캐릭터</b>가 됩니다. 수정하거나 다시 생성할 수 없습니다.</li>
            ${CONFIG.A_VIEW_SEC ? `<li>${mins(CONFIG.A_VIEW_SEC)} 동안 결과를 천천히 살펴본 뒤 설문으로 넘어갑니다.</li>` : ''}`
-        : `<li>생성된 이미지를 보고, <b>${mins(CONFIG.REVISION_SEC)} 동안 바꾸고 싶은 점</b>을 글로 적을 수 있습니다. 이 시간은 일찍 끝낼 수 없습니다.</li>
-           <li>시간이 끝났을 때 적은 내용이 있으면 그것을 반영해 <b>한 번 더 생성</b>하고, 그 <b>두 번째 이미지</b>가 최종 캐릭터가 됩니다. 아무것도 적지 않으면 첫 번째 이미지가 최종입니다.</li>`}
+        : `<li>생성된 이미지와 함께 <b>AI에게 보낸 프롬프트</b>가 나타납니다. <b>${mins(CONFIG.REVISION_SEC)} 동안 이 프롬프트를 직접 고칠 수 있습니다</b>. 이 시간은 일찍 끝낼 수 없습니다.</li>
+           <li>시간이 끝났을 때 프롬프트를 고쳤다면 그 프롬프트로 <b>한 번 더 생성</b>하고, 그 <b>두 번째 이미지</b>가 최종 캐릭터가 됩니다. 고치지 않으면 첫 번째 이미지가 최종입니다.</li>`}
     </ol>
   </div>
   <div class="actions"><button id="next">이미지 생성 시작</button></div>`);
@@ -1055,7 +1071,7 @@ SCREENS.genIntro = function () {
 /* ---------- 7. Generation ----------
  * 1차: A/B 모두 컨셉 시트를 고정 템플릿으로 바꾼 프롬프트(buildPrompt) + 스케치로 자동 생성 — 참가자는 프롬프트를 쓰지 않음
  * A: 1차가 최종. A_VIEW_SEC 동안 결과 살펴보기 (B의 수정 시간과 1차 결과 노출 시간을 맞춤)
- * B: 1차 결과를 보며 REVISION_SEC 동안 수정 요청 작성 → 적었으면 1차 이미지 + 수정 요청으로 1회 재생성(2차가 최종), 비우면 1차가 최종 */
+ * B: 1차 결과를 보며 REVISION_SEC 동안 1차 프롬프트를 직접 수정 → 고쳤으면 1차 이미지 + 고친 프롬프트로 1회 재생성(2차가 최종), 안 고치면 1차가 최종 */
 SCREENS.gen = function () {
   const A = S.condition === 'A';
   const G = S.gen;
@@ -1102,32 +1118,33 @@ SCREENS.gen = function () {
 
   /* --- B: 1차 결과를 보며 수정 요청 작성 (고정 시간) --- */
   function stageRevise() {
-    if (!G.rounds[1]) { G.rounds[1] = { n: 2, startedAt: now(), startMs: Date.now(), inputEvents: 0, request: '' }; log('revision_start'); save(); }
+    if (!G.rounds[1]) { G.rounds[1] = { n: 2, startedAt: now(), startMs: Date.now(), inputEvents: 0, editedPrompt: G.basePrompt }; log('revision_start'); save(); }
     const RD = G.rounds[1], img = okAttempts()[0];
     card.innerHTML = `
-      <div class="gen-status"><span><b>수정 요청</b></span><span class="timer" id="timer"></span></div>
+      <div class="gen-status"><span><b>프롬프트 수정</b></span><span class="timer" id="timer"></span></div>
       <p class="muted" style="margin-top:0">${GEN_TEXT.revise}</p>
       <div class="attempt" style="max-width:260px;margin-bottom:14px"><img src="${img.image}" alt="1차 결과"><div class="cap"><span>1차 결과</span></div></div>
-      <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:120px" placeholder="${GEN_TEXT.revisePh}"></textarea>
-      <div class="gen-status" style="margin-top:6px"><span id="chars" class="muted"></span><span class="muted">시간이 끝나면 자동으로 진행됩니다 (일찍 끝낼 수 없음)</span></div>
-      ${promptDetails()}`;
+      <label class="field" style="margin-top:0">AI에게 보낼 프롬프트 <small>(직접 고쳐 주세요)</small></label>
+      <textarea id="req" maxlength="${CONFIG.REVISION_MAX_CHARS}" style="min-height:260px;font-size:14px;line-height:1.6" spellcheck="false"></textarea>
+      <div class="gen-status" style="margin-top:6px"><span><span id="chars" class="muted"></span> <button class="secondary" id="resetPrompt" style="padding:4px 10px;font-size:13px">처음 프롬프트로 되돌리기</button></span><span class="muted">시간이 끝나면 자동으로 진행됩니다 (일찍 끝낼 수 없음)</span></div>
+      <p class="muted" style="font-size:13px">${GEN_TEXT.revisePh}</p>`;
     const ta = $('#req');
-    ta.value = RD.request || '';
-    const upd = () => { $('#chars').textContent = `${ta.value.trim().length}자 / 최대 ${CONFIG.REVISION_MAX_CHARS}`; };
-    ta.addEventListener('input', () => { RD.request = ta.value; RD.inputEvents++; upd(); });
+    ta.value = RD.editedPrompt ?? G.basePrompt;
+    const upd = () => { const d = editDistance(G.basePrompt, ta.value.trim()); $('#chars').textContent = d ? `처음 프롬프트에서 ${d}자 바뀜` : '아직 고치지 않음'; };
+    ta.addEventListener('input', () => { RD.editedPrompt = ta.value; RD.inputEvents++; upd(); });
+    $('#resetPrompt').onclick = () => { if (confirm('고친 내용을 지우고 처음 프롬프트로 되돌릴까요?')) { ta.value = G.basePrompt; RD.editedPrompt = ta.value; RD.resets = (RD.resets || 0) + 1; log('prompt_reset'); upd(); } };
     upd(); ta.focus();
     countdown(CONFIG.REVISION_SEC, RD.startMs, () => {
-      Object.assign(RD, { request: ta.value.trim(), endedAt: now(), writeSeconds: Math.round((Date.now() - RD.startMs) / 1000) });
-      // "없음/좋아요/그대로" 같은 답은 수정 요청이 아니라 1차 유지로 처리 (원문은 request에 그대로 남음)
-      const noChange = /^(없음|없어요|없습니다|없다|좋아요|좋음|좋습니다|만족|만족해요|만족합니다|괜찮아요|괜찮습니다|그대로|그대로 두기|수정 없음|x|X|-)[\s.!~ㅎ]*$/.test(RD.request);
-      if (RD.request.length < CONFIG.REVISION_MIN_CHARS || noChange) {
-        Object.assign(RD, { endedBy: 'timeout_empty', abandoned: true });
-        G.revised = false; log('keep_first', { how: 'timeout_empty' });
+      const edited = ta.value.trim(), dist = editDistance(G.basePrompt, edited);
+      Object.assign(RD, { editedPrompt: edited, editDistance: dist, endedAt: now(), writeSeconds: Math.round((Date.now() - RD.startMs) / 1000) });
+      if (dist < CONFIG.REVISION_MIN_CHARS || !edited) {
+        Object.assign(RD, { endedBy: 'timeout_unchanged', abandoned: true });
+        G.revised = false; log('keep_first', { how: 'timeout_unchanged', editDistance: dist });
         return toFinal(img.idx);
       }
-      RD.endedBy = 'timeout'; RD.prompt = `${G.basePrompt}\n- 수정 요청: ${RD.request}`;
+      RD.endedBy = 'timeout'; RD.prompt = edited;
       G.revised = true; G.round = 2; G.stage = 'generating';
-      log('round_end', { round: 2, chars: RD.request.length, inputEvents: RD.inputEvents });
+      log('round_end', { round: 2, chars: edited.length, editDistance: dist, inputEvents: RD.inputEvents });
       save(); stageGenerate();
     });
   }
@@ -1139,9 +1156,9 @@ SCREENS.gen = function () {
     card.innerHTML = `<div class="spinner"></div><p class="muted" style="text-align:center" id="genMsg">${rev ? '수정 요청을 반영해 2차 이미지를' : '컨셉 시트와 스케치로 캐릭터 이미지를'} 생성하고 있습니다… (최대 1분 정도)</p><div class="err" id="err" style="text-align:center"></div><div class="actions" style="justify-content:center" id="retryBox"></div>`;
     let ref = null, fullPrompt;
     if (rev) {
-      const req = G.rounds[1].request;
+      const edited = G.rounds[1].prompt;
       ref = prov.supportsSketch ? okAttempts()[0].image : null;
-      fullPrompt = ref ? `${CONFIG.REVISION_INSTRUCTION}${req}\n\nOriginal character description:\n${G.basePrompt}${CONFIG.STYLE_SUFFIX}` : `${G.basePrompt}\n- 수정 요청: ${req}${CONFIG.STYLE_SUFFIX}`;
+      fullPrompt = ref ? revisionPrompt(G.basePrompt, edited) : edited + CONFIG.STYLE_SUFFIX;
     } else {
       ref = CONFIG.USE_SKETCH && prov.supportsSketch && S.sketch?.dataUrl ? S.sketch.dataUrl : null;
       fullPrompt = (ref ? CONFIG.SKETCH_INSTRUCTION : '') + G.basePrompt + CONFIG.STYLE_SUFFIX;
@@ -1322,7 +1339,9 @@ function genFields(s, g) {
   const view = s.condition === 'A' ? g.viewSeconds ?? null : rv.writeSeconds ?? null;
   return {
     auto_prompt: g.basePrompt ?? '', auto_prompt_chars: g.basePrompt?.length ?? null,
-    revision_request: rv.request ?? '', revision_chars: rv.request != null ? rv.request.trim().length : null,
+    revision_prompt: rv.editedPrompt ?? rv.request ?? '', revision_prompt_chars: rv.editedPrompt != null ? rv.editedPrompt.trim().length : null,
+    revision_edit_distance: rv.editDistance ?? (rv.editedPrompt != null && g.basePrompt ? editDistance(g.basePrompt, rv.editedPrompt.trim()) : null),   // 1차 프롬프트에서 바뀐 글자 수
+    revision_resets: rv.resets ?? (rv.editedPrompt != null ? 0 : null), revision_request_legacy: rv.request ?? '',   // 이전 버전(수정 요청 글) 세션 호환
     revision_input_events: rv.inputEvents ?? null, revision_seconds: rv.writeSeconds ?? null,
     image1_view_seconds: view,   // 1차 결과를 본 고정 시간 (A: 살펴보기, B: 수정 요청 작성) — 조건 간 같아야 함
   };

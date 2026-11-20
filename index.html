@@ -315,6 +315,23 @@ function getAssignment() {
   if (!a) { a = { seed, table: null }; a.table = makeAssignment(CONFIG.N_PER_STRATUM, a.seed); LS.set('assignment', a); }
   return a;
 }
+/* 본실험 다음 배정 (서버 없음): 이 PC·이 층에서 실제로 완료된 본 세션의 조건·세계관 수를 맞춤
+ * - 조건: A/B 중 완료 수가 적은 쪽 (같으면 배정표의 다음 칸을 따름 → 무선) ⇒ 층 안에서 A/B 차이는 항상 1 이하, 같은 조건 연속은 최대 2번
+ * - 세계관: 그 조건 안에서 완료 수가 적은 쪽 (같으면 배정표 순서)
+ * - 배정표 칸이 같은 칸으로 겹치지 않도록 아직 안 쓴 칸 중에서 고름 */
+function pickBalanced(asg, st, sessions) {
+  const mains = sessions.filter(s => !s.isTest && s.stratum === st);
+  const doneM = mains.filter(s => s.completedAt);
+  const used = new Set(mains.filter(s => s.pid).map(slotOf));
+  const free = asg.table.filter(r => r.stratum === st && !used.has(r.pid));
+  if (!free.length) return null;
+  const n = (c, w) => doneM.filter(s => s.condition === c && (!w || s.world === w)).length;
+  const cond = n('A') === n('B') ? free[0].condition : n('A') < n('B') ? 'A' : 'B';
+  const ws = WORLDS.map(w => w.id), first = free.find(r => r.condition === cond);
+  const world = n(cond, ws[0]) === n(cond, ws[1]) ? (first ? first.world : ws[0]) : n(cond, ws[0]) < n(cond, ws[1]) ? ws[0] : ws[1];
+  return free.find(r => r.condition === cond && r.world === world) || first
+    || { ...free[0], condition: cond, world };   // 남은 칸에 그 조건이 없으면 칸 번호만 쓰고 조건·세계관은 균형 쪽으로
+}
 const getStratum = id => STRATA.find(s => s.id === id);
 // 참가자 번호: 본실험 P01, P02… (모든 PC 통틀어 순서대로, 인계 파일로 이어받음) / 테스트 T01…
 // 배정표의 E01·N01은 '배정 칸'(slot)이고, 세션에는 slot으로 따로 기록
@@ -644,8 +661,8 @@ SCREENS.admin = async function () {
   </div>
 
   <details class="card"><summary class="muted" style="cursor:pointer">무선배정표 보기 (seed ${asg.seed})</summary>
-    <p class="muted">창작 경험 층마다 4명 단위 블록 무선배정 (조건 × 세계관 균형).</p>
-    ${STRATA.map(st => { const rows = asg.table.filter(r => r.stratum === st.id), nx = rows.find(r => !done.has(r.pid)); return `
+    <p class="muted">창작 경험 층마다 4명 단위 블록 무선배정표. 실제 배정은 이 PC에서 완료된 본 세션의 A/B·세계관 수를 맞추는 쪽으로 정해지고(같을 때만 표 순서), 그래서 '다음 배정'이 표 순서와 다를 수 있습니다.</p>
+    ${STRATA.map(st => { const rows = asg.table.filter(r => r.stratum === st.id), nx = pickBalanced(asg, st.id, sessions); return `
       <p style="margin:12px 0 4px"><b>${st.id} · ${st.label}</b> <span class="muted">— 다음 배정: ${nx ? `${nx.pid} → ${nx.condition} · ${getWorld(nx.world).short}` : '모두 완료'}</span></p>
       <div style="overflow-x:auto"><table><tbody><tr>${rows.map(r => `<td style="text-align:center;white-space:nowrap;${done.has(r.pid) ? 'opacity:.4' : ''}">${r.pid}<br><b>${r.condition}</b><br><small>${getWorld(r.world).short}</small></td>`).join('')}</tr></tbody></table></div>`; }).join('')}
     <div class="actions"><button class="danger" id="reseed">배정표 다시 만들기</button></div>
@@ -855,7 +872,7 @@ async function autoAssign() {
   const free = asg.table.filter(r => r.stratum === st && !used.has(r.pid));
   const nTest = others.filter(s => s.isTest && s.stratum === st && s.assignedBy !== 'server').length;
   const want = S.isTest && S.testCond ? asg.table.filter(r => r.stratum === st && r.condition === S.testCond) : [];   // 테스트에서 조건을 직접 고른 경우
-  const row = (want.length ? want[nTest % want.length] : null) || (S.isTest && free.length ? free[nTest % free.length] : null) || asg.table.find(r => r.stratum === st && !used.has(r.pid))
+  const row = (want.length ? want[nTest % want.length] : null) || (S.isTest && free.length ? free[nTest % free.length] : null) || (!S.isTest && pickBalanced(asg, st, others)) || asg.table.find(r => r.stratum === st && !used.has(r.pid))
     || (() => { const rows = asg.table.filter(r => r.stratum === st); return { ...rows[rows.length - 1], pid: `${st}X${String(Date.now()).slice(-4)}`, overflow: true }; })();   // 배정표 소진 시 마지막 칸 조건으로 임시 칸
   const pid = nextPid(others, !!S.isTest);
   await DB.del(S.id);
